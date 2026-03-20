@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, PlusCircle, GitCompare, HelpCircle } from 'lucide-react';
+import { Home, GitCompare, HelpCircle } from 'lucide-react';
 import { ProjetoCompleto } from '@/lib/types';
 
 interface NavbarProps {
@@ -7,8 +7,7 @@ interface NavbarProps {
 }
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: BarChart3 },
-  { to: '/novo', label: 'Novo Projeto', icon: PlusCircle },
+  { to: '/', label: 'Projetos', icon: Home },
   { to: '/comparativo', label: 'Comparativo', icon: GitCompare },
   { to: '/ajuda', label: 'Ajuda', icon: HelpCircle },
 ];
@@ -68,7 +67,7 @@ export default function Navbar({ resultado }: NavbarProps) {
               }`}
             >
               <item.icon size={16} />
-              {item.label.split(' ')[0]}
+              {item.label}
             </Link>
           );
         })}

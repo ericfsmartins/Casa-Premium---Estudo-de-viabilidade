@@ -93,8 +93,8 @@ export default function ComparativoPage({ resultados, onSetActive, onRemove, onA
                   </td>
                   <td className="p-3">
                     <div className="flex justify-end gap-1">
-                      <button onClick={() => { onSetActive(r.inputs.id); navigate('/'); }} className="p-1.5 text-muted-foreground hover:text-info transition-colors" title="Ver dashboard"><Eye size={14} /></button>
-                      <button onClick={() => { onSetActive(r.inputs.id); navigate('/novo'); }} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" title="Editar"><Edit size={14} /></button>
+                      <button onClick={() => { onSetActive(r.inputs.id); navigate(`/projeto/${r.inputs.id}`); }} className="p-1.5 text-muted-foreground hover:text-info transition-colors" title="Ver dashboard"><Eye size={14} /></button>
+                      <button onClick={() => { onSetActive(r.inputs.id); navigate(`/projeto/${r.inputs.id}`); }} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" title="Editar"><Edit size={14} /></button>
                       <button onClick={() => onRemove(r.inputs.id)} className="p-1.5 text-muted-foreground hover:text-destructive transition-colors" title="Excluir"><Trash2 size={14} /></button>
                     </div>
                   </td>
