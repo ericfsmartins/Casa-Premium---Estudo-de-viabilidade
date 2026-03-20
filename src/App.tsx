@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Navbar from "@/components/Navbar";
 import DashboardPage from "@/pages/DashboardPage";
 import InputsPage from "@/pages/InputsPage";
+import Index from "./pages/Index.tsx";
 import ComparativoPage from "@/pages/ComparativoPage";
 import AjudaPage from "@/pages/AjudaPage";
 import NotFound from "./pages/NotFound.tsx";
