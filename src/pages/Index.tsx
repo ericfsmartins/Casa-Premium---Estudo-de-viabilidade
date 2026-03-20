@@ -1,2 +1,2 @@
-import DashboardPage from './DashboardPage';
-export default DashboardPage;
+import HomePage from './HomePage';
+export default HomePage;
