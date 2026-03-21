@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import { ProjetoCompleto } from '@/lib/types';
-import { calcularProjetoCompleto } from '@/lib/calculos';
+import { calcularProjetoCompleto, calcSaldoDevedor } from '@/lib/calculos';
 import { fmtBRL, fmtPct } from '@/lib/formatters';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { AlertTriangle, CheckCircle, Printer } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Printer, ChevronDown, ChevronUp, Info, Lightbulb } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
 
 const GOLD = '#C9A84C';
 const GREEN = '#34D399';
@@ -32,24 +33,69 @@ function ScoreCircle({ score }: { score: number }) {
   );
 }
 
+const KPI_TOOLTIPS: Record<string, string> = {
+  'ROE': 'Retorno sobre o capital próprio investido',
+  'Margem Líquida': 'Percentual do VGV que sobra como lucro',
+  'TIR Equity a.a.': 'Taxa interna de retorno anualizada do fluxo de caixa do equity',
+  'VPL Equity': 'Valor presente líquido descontado à TMA',
+  'Lucro Líquido': 'Receita líquida menos todos os custos e impostos',
+  'MOIC': 'Quantas vezes você recupera o capital. Abaixo de 1,5x = pouco atrativo',
+  'Payback Descontado': 'Mês em que o fluxo acumulado descontado cruza o zero',
+  'Exposição Máx.': 'Pico de caixa comprometido — nunca superar 30% do VGV',
+};
+
 function KPICard({ label, value, detail, status }: { label: string; value: string; detail?: string; status: 'ok' | 'warn' | 'bad' }) {
   const color = status === 'ok' ? 'text-success' : status === 'warn' ? 'text-warning' : 'text-destructive';
+  const tooltip = KPI_TOOLTIPS[label];
   return (
-    <div className="bg-card border border-border rounded-lg p-4 hover:-translate-y-0.5 transition-transform duration-300">
-      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide mb-1">{label}</p>
+    <div className="bg-card border border-border rounded-lg p-4 hover:-translate-y-0.5 transition-transform duration-300 group relative">
+      <div className="flex items-center gap-1 mb-1">
+        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
+        {tooltip && (
+          <div className="relative">
+            <Info size={12} className="text-muted-foreground/50 cursor-help" />
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-popover border border-border rounded-md text-[10px] text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+              {tooltip}
+            </div>
+          </div>
+        )}
+      </div>
       <p className={`font-display text-xl font-bold ${color}`}>{value}</p>
       {detail && <p className="text-[11px] text-muted-foreground mt-1">{detail}</p>}
     </div>
   );
 }
 
+function CollapsibleSection({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-muted/30 transition-colors">
+        <span className="font-display text-base">{title}</span>
+        {open ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
+      </button>
+      {open && <div className="px-5 pb-5 border-t border-border">{children}</div>}
+    </div>
+  );
+}
+
 export default function DashboardPage({ resultado }: DashboardProps) {
   const [cenarioSel, setCenarioSel] = useState<'A' | 'B' | 'C'>('B');
+  const [sliderMeses, setSliderMeses] = useState<number | null>(null);
   const c = resultado.cenarios[cenarioSel];
-  const { mercado, parecer, auditChecks, inputs } = resultado;
+  const { mercado, parecer, auditChecks, inputs, cronogramaJuros } = resultado;
   const vgvEfetivo = Math.max(inputs.valorVenda, inputs.precoMercado * inputs.areaConstruida);
   const bufferBE = vgvEfetivo > 0 ? (vgvEfetivo - c.breakEvenVGV) / vgvEfetivo : 0;
   const spreadTIR = c.tir - inputs.tma;
+  const carregoMensal = inputs.condominio + inputs.iptuAnual / 12;
+
+  // Slider sensitivity recalc
+  const sliderResult = useMemo(() => {
+    if (sliderMeses === null) return null;
+    const modInputs = { ...inputs, mesesPosA: sliderMeses, mesesPosB: sliderMeses, mesesPosC: sliderMeses };
+    const r = calcularProjetoCompleto(modInputs);
+    return r.cenarios[cenarioSel];
+  }, [sliderMeses, inputs, cenarioSel]);
 
   const fluxoAcum = useMemo(() => c.fluxosCaixa.reduce<{ mes: number; valor: number; fase: string }[]>((acc, fc, i) => {
     const prev = acc.length > 0 ? acc[acc.length - 1].valor : 0;
@@ -79,17 +125,16 @@ export default function DashboardPage({ resultado }: DashboardProps) {
     { name: 'TIR', A: resultado.cenarios.A.tir * 100, B: resultado.cenarios.B.tir * 100, C: resultado.cenarios.C.tir * 100 },
   ];
 
-  // Sensitivity tables
   const deltas = [-0.10, -0.05, 0, 0.05, 0.10];
   const mesesOptions = [1, 3, 6, 9, 12];
   const ltvOptions = [0.60, 0.70, 0.80, 0.90];
   const deltaTaxa = [-0.02, -0.01, 0, 0.01, 0.02];
 
-  const sensROE = useMemo(() => deltas.map(dVGV => {
-    const row: Record<string, number | string> = { deltaVGV: `${dVGV >= 0 ? '+' : ''}${(dVGV * 100).toFixed(0)}%` };
-    deltas.forEach(dCusto => {
+  const sensROE = useMemo(() => deltas.map(dCusto => {
+    const row: Record<string, number | string> = { deltaCusto: `${dCusto >= 0 ? '+' : ''}${(dCusto * 100).toFixed(0)}%` };
+    deltas.forEach(dVGV => {
       const r = calcularProjetoCompleto({ ...inputs, valorVenda: inputs.valorVenda * (1 + dVGV), custoPorM2: inputs.custoPorM2 * (1 + dCusto) });
-      row[`${(dCusto * 100).toFixed(0)}%`] = r.cenarios[cenarioSel].roe;
+      row[`${(dVGV * 100).toFixed(0)}%`] = r.cenarios[cenarioSel].roe;
     });
     return row;
   }), [inputs, cenarioSel]);
@@ -131,6 +176,15 @@ export default function DashboardPage({ resultado }: DashboardProps) {
     : parecer.score >= 35 ? 'bg-warning/20 text-warning border-warning/30'
     : 'bg-destructive/20 text-destructive border-destructive/30';
 
+  const faseColor = (fase: string) => {
+    if (fase === 'Compra' || fase === 'Início') return 'bg-muted/30';
+    if (fase === 'Pré-Obra') return 'bg-blue-500/10';
+    if (fase === 'Obra') return 'bg-warning/10';
+    return 'bg-success/10';
+  };
+
+  const totalJurosObra = cronogramaJuros.reduce((s, r) => s + r.juros, 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -149,6 +203,16 @@ export default function DashboardPage({ resultado }: DashboardProps) {
           </button>
         </div>
       </div>
+
+      {/* Alerta estoque cenário C */}
+      {cenarioSel === 'C' && (
+        <div className="bg-warning/10 border border-warning/30 rounded-lg p-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-warning shrink-0 mt-0.5" />
+          <p className="text-sm text-warning">
+            Com {c.mesesPos} meses de estoque, você paga <strong>{fmtBRL(c.prestacoesPagas)}</strong> em prestações bancárias antes de vender. Priorize a pré-venda na planta.
+          </p>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -253,6 +317,47 @@ export default function DashboardPage({ resultado }: DashboardProps) {
         </div>
       </div>
 
+      {/* Custos Pós-Obra */}
+      <div className="bg-card border border-border rounded-lg p-5 space-y-4">
+        <h2 className="font-display text-lg">Custos Pós-Obra — Cenário {cenarioSel} ({c.mesesPos} meses)</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <table className="w-full text-sm font-mono">
+              <tbody>
+                <tr className="border-b border-border/50"><td className="py-2">Carrego (condomínio + IPTU)</td><td className="text-right py-2">{fmtBRL(c.carregoPos)}</td></tr>
+                <tr className="border-b border-border/50"><td className="py-2">Parcelas financiamento ({c.mesesPos}×PMT)</td><td className="text-right py-2">{fmtBRL(c.prestacoesPagas)}</td></tr>
+                <tr className="border-b border-border font-bold"><td className="py-2">TOTAL PÓS-OBRA</td><td className="text-right py-2 text-primary">{fmtBRL(c.totalPos)}</td></tr>
+                <tr className="border-b border-border/50"><td className="py-2 text-muted-foreground">Saldo devedor na venda</td><td className="text-right py-2 text-muted-foreground">{fmtBRL(c.saldoNaVenda)}</td></tr>
+              </tbody>
+            </table>
+            <div className="mt-3 flex items-start gap-2 bg-primary/10 rounded-lg p-3 text-xs text-primary">
+              <Lightbulb size={14} className="shrink-0 mt-0.5" />
+              <span>Cada mês adicional custa <strong>{fmtBRL(resultado.pmt + carregoMensal)}</strong> (PMT {fmtBRL(resultado.pmt)} + carrego {fmtBRL(carregoMensal)})</span>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground font-medium">Simulador de estoque (meses pós-obra)</p>
+            <div className="flex items-center gap-3">
+              <Slider
+                min={1} max={24} step={1}
+                value={[sliderMeses ?? c.mesesPos]}
+                onValueChange={([v]) => setSliderMeses(v)}
+                className="flex-1"
+              />
+              <span className="font-mono text-sm text-primary min-w-[3ch] text-right">{sliderMeses ?? c.mesesPos}m</span>
+            </div>
+            {sliderResult && sliderMeses !== null && (
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div className="bg-muted/30 rounded-lg p-2"><span className="text-muted-foreground block">Pós-Obra</span><span>{fmtBRL(sliderResult.totalPos)}</span></div>
+                <div className="bg-muted/30 rounded-lg p-2"><span className="text-muted-foreground block">Saldo Devedor</span><span>{fmtBRL(sliderResult.saldoNaVenda)}</span></div>
+                <div className="bg-muted/30 rounded-lg p-2"><span className="text-muted-foreground block">Lucro Líquido</span><span className={sliderResult.lucroLiquido > 0 ? 'text-success' : 'text-destructive'}>{fmtBRL(sliderResult.lucroLiquido)}</span></div>
+                <div className="bg-muted/30 rounded-lg p-2"><span className="text-muted-foreground block">ROE</span><span className={sliderResult.roe >= 0.3 ? 'text-success' : 'text-destructive'}>{fmtPct(sliderResult.roe)}</span></div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Fluxo de Caixa */}
       <div className="bg-card border border-border rounded-lg p-5">
         <h2 className="font-display text-lg mb-3">Fluxo de Caixa Acumulado — Cenário {cenarioSel}</h2>
@@ -275,6 +380,74 @@ export default function DashboardPage({ resultado }: DashboardProps) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Tabela Fluxo de Caixa Mensal */}
+      <CollapsibleSection title={`Fluxo de Caixa Mensal — Cenário ${cenarioSel}`}>
+        <div className="overflow-x-auto mt-3">
+          <table className="w-full text-[11px] font-mono">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border">
+                <th className="py-1.5 text-left">Mês</th>
+                <th className="py-1.5 text-left">Fase</th>
+                <th className="py-1.5 text-right">Custo Equity</th>
+                <th className="py-1.5 text-right">Liberação</th>
+                <th className="py-1.5 text-right">Juros</th>
+                <th className="py-1.5 text-right">PMT Pós</th>
+                <th className="py-1.5 text-right">Venda/Quit.</th>
+                <th className="py-1.5 text-right">Fluxo Líq.</th>
+                <th className="py-1.5 text-right">Acumulado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.fluxoDetalhado.map((row, i) => (
+                <tr key={i} className={`border-b border-border/30 ${faseColor(row.fase)}`}>
+                  <td className="py-1">{row.mes}</td>
+                  <td className="py-1">{row.fase}</td>
+                  <td className="py-1 text-right">{row.custoEquity !== 0 ? fmtBRL(row.custoEquity) : '—'}</td>
+                  <td className="py-1 text-right">{row.liberacaoBanco > 0 ? fmtBRL(row.liberacaoBanco) : '—'}</td>
+                  <td className="py-1 text-right">{row.juros !== 0 ? fmtBRL(row.juros) : '—'}</td>
+                  <td className="py-1 text-right">{row.pmtPos !== 0 ? fmtBRL(row.pmtPos) : '—'}</td>
+                  <td className="py-1 text-right">{row.vendaIRQuit !== 0 ? fmtBRL(row.vendaIRQuit) : '—'}</td>
+                  <td className={`py-1 text-right font-medium ${row.fluxoLiquido >= 0 ? 'text-success' : 'text-destructive'}`}>{fmtBRL(row.fluxoLiquido)}</td>
+                  <td className={`py-1 text-right ${row.acumulado >= 0 ? 'text-success' : 'text-destructive'}`}>{fmtBRL(row.acumulado)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleSection>
+
+      {/* Cronograma Juros de Obra */}
+      <CollapsibleSection title="Cronograma de Juros de Obra">
+        <div className="overflow-x-auto mt-3">
+          <table className="w-full text-[11px] font-mono">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border">
+                <th className="py-1.5 text-left">Mês</th>
+                <th className="py-1.5 text-right">Liberação</th>
+                <th className="py-1.5 text-right">Saldo Devedor</th>
+                <th className="py-1.5 text-right">Juros do Período</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cronogramaJuros.map((row) => (
+                <tr key={row.mes} className="border-b border-border/30">
+                  <td className="py-1">{row.mes}</td>
+                  <td className="py-1 text-right">{fmtBRL(row.liberacao)}</td>
+                  <td className="py-1 text-right">{fmtBRL(row.saldo)}</td>
+                  <td className="py-1 text-right">{fmtBRL(row.juros)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-border font-bold">
+                <td className="py-1.5">Total</td>
+                <td className="py-1.5 text-right">{fmtBRL(resultado.valorFinanciado)}</td>
+                <td className="py-1.5 text-right">—</td>
+                <td className="py-1.5 text-right text-primary">{fmtBRL(totalJurosObra)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleSection>
 
       {/* Composição de Custos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -355,12 +528,12 @@ export default function DashboardPage({ resultado }: DashboardProps) {
         <h2 className="font-display text-lg">Análise de Sensibilidade</h2>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="bg-card border border-border rounded-lg p-4 overflow-x-auto">
-            <p className="text-xs text-muted-foreground mb-2 font-medium">ROE × (ΔVGV vs ΔCusto)</p>
+            <p className="text-xs text-muted-foreground mb-2 font-medium">ROE × (ΔCusto \ ΔVGV)</p>
             <table className="w-full text-[11px]">
-              <thead><tr className="text-muted-foreground"><th className="py-1 text-left">ΔVGV\ΔCusto</th>{deltas.map(d => <th key={d} className="py-1 text-center">{d >= 0 ? '+' : ''}{(d * 100).toFixed(0)}%</th>)}</tr></thead>
+              <thead><tr className="text-muted-foreground"><th className="py-1 text-left">ΔCusto\ΔVGV</th>{deltas.map(d => <th key={d} className="py-1 text-center">{d >= 0 ? '+' : ''}{(d * 100).toFixed(0)}%</th>)}</tr></thead>
               <tbody className="font-mono">{sensROE.map((row, i) => (
-                <tr key={i}><td className="py-1 text-muted-foreground">{row.deltaVGV as string}</td>
-                  {deltas.map(d => { const v = row[`${(d * 100).toFixed(0)}%`] as number; return <td key={d} className={`py-1 text-center rounded ${cellColor(v, [0.6, 0.3])}`}>{(v * 100).toFixed(0)}%</td>; })}
+                <tr key={i}><td className="py-1 text-muted-foreground">{row.deltaCusto as string}</td>
+                  {deltas.map(d => { const v = row[`${(d * 100).toFixed(0)}%`] as number; return <td key={d} className={`py-1 text-center rounded ${cellColor(v, [0.6, 0.3])}`}>{(v * 100).toFixed(1)}%</td>; })}
                 </tr>
               ))}</tbody>
             </table>
@@ -371,7 +544,7 @@ export default function DashboardPage({ resultado }: DashboardProps) {
               <thead><tr className="text-muted-foreground"><th className="py-1 text-left">ΔVGV\Meses</th>{mesesOptions.map(m => <th key={m} className="py-1 text-center">{m}m</th>)}</tr></thead>
               <tbody className="font-mono">{sensMargem.map((row, i) => (
                 <tr key={i}><td className="py-1 text-muted-foreground">{row.deltaVGV as string}</td>
-                  {mesesOptions.map(m => { const v = row[`${m}m`] as number; return <td key={m} className={`py-1 text-center rounded ${cellColor(v, [0.2, 0.1])}`}>{(v * 100).toFixed(0)}%</td>; })}
+                  {mesesOptions.map(m => { const v = row[`${m}m`] as number; return <td key={m} className={`py-1 text-center rounded ${cellColor(v, [0.2, 0.1])}`}>{(v * 100).toFixed(1)}%</td>; })}
                 </tr>
               ))}</tbody>
             </table>
