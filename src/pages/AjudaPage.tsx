@@ -1,3 +1,5 @@
+import { BookOpen } from 'lucide-react';
+
 const indicadores = [
   {
     nome: 'ROE (Return on Equity)',
@@ -57,7 +59,7 @@ const indicadores = [
   },
   {
     nome: 'Exposição Máxima de Caixa',
-    formula: 'Total de custos – financiamento + custos pós-obra',
+    formula: '|min(fluxo acumulado)| — pico negativo do equity',
     interpretacao: 'Quanto de capital próprio o investidor precisa ter disponível no pior momento.',
     bom: 'Abaixo de 40% do VGV — risco de capital controlado.',
     ruim: 'Acima de 50% do VGV — comprometimento alto de capital.',
@@ -67,37 +69,45 @@ const indicadores = [
 
 export default function AjudaPage() {
   return (
-    <div className="space-y-6">
-      <h1 className="font-display text-2xl text-foreground">Guia de Indicadores</h1>
-      <p className="text-sm text-muted-foreground max-w-2xl">
-        Entenda cada indicador utilizado na análise de viabilidade. Todos os cálculos são automáticos
-        e atualizados em tempo real conforme você altera os dados do projeto.
-      </p>
+    <div className="space-y-8">
+      <div className="animate-fade">
+        <p className="text-xs text-primary font-semibold uppercase tracking-[0.2em] mb-2">Referência</p>
+        <h1 className="font-display text-3xl text-foreground tracking-tight">Guia de Indicadores</h1>
+        <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
+          Entenda cada indicador utilizado na análise de viabilidade. Todos os cálculos são automáticos
+          e atualizados em tempo real conforme você altera os dados do projeto.
+        </p>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {indicadores.map(ind => (
-          <div key={ind.nome} className="bg-card border border-border rounded-lg p-5 space-y-3 hover:-translate-y-0.5 transition-transform duration-300">
-            <h3 className="font-display text-base text-primary">{ind.nome}</h3>
-            <div className="space-y-2 text-sm">
+        {indicadores.map((ind, idx) => (
+          <div key={ind.nome} className={`section-card p-6 space-y-4 hover:-translate-y-1 transition-all duration-300 ${
+            idx < 8 ? `animate-in-${idx + 1}` : 'animate-in-8'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              <BookOpen size={16} className="text-primary" />
+              <h3 className="font-display text-base text-primary">{ind.nome}</h3>
+            </div>
+            <div className="space-y-3 text-sm">
               <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Fórmula</p>
-                <p className="font-mono text-xs bg-muted/30 rounded px-2 py-1">{ind.formula}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Fórmula</p>
+                <p className="font-mono text-xs bg-muted/20 border border-border/30 rounded-lg px-3 py-2">{ind.formula}</p>
               </div>
               <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Como interpretar</p>
-                <p className="text-muted-foreground text-xs">{ind.interpretacao}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Como interpretar</p>
+                <p className="text-muted-foreground text-xs leading-relaxed">{ind.interpretacao}</p>
               </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <p className="text-[10px] text-success uppercase tracking-wider mb-0.5">✓ Bom</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-success/5 border border-success/10 rounded-xl p-3">
+                  <p className="text-[10px] text-success uppercase tracking-wider mb-1 font-semibold">✓ Bom</p>
                   <p className="text-xs text-muted-foreground">{ind.bom}</p>
                 </div>
-                <div className="flex-1">
-                  <p className="text-[10px] text-destructive uppercase tracking-wider mb-0.5">✗ Ruim</p>
+                <div className="bg-destructive/5 border border-destructive/10 rounded-xl p-3">
+                  <p className="text-[10px] text-destructive uppercase tracking-wider mb-1 font-semibold">✗ Ruim</p>
                   <p className="text-xs text-muted-foreground">{ind.ruim}</p>
                 </div>
               </div>
-              <div>
-                <p className="text-[10px] text-info uppercase tracking-wider mb-0.5">Exemplo prático</p>
+              <div className="bg-info/5 border border-info/10 rounded-xl p-3">
+                <p className="text-[10px] text-info uppercase tracking-wider mb-1 font-semibold">Exemplo prático</p>
                 <p className="text-xs text-muted-foreground">{ind.exemplo}</p>
               </div>
             </div>

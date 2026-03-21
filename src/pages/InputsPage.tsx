@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Plus, Trash2, RotateCcw, Save } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, RotateCcw, Save } from 'lucide-react';
 import { ProjetoInputs, Comparavel } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -12,15 +12,17 @@ interface InputsPageProps {
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="bg-card rounded-lg border border-border overflow-hidden transition-all duration-300">
+    <div className="section-card">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-muted/30 transition-colors active:scale-[0.995]"
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-muted/20 transition-colors active:scale-[0.998]"
       >
         <span className="font-display text-base text-foreground">{title}</span>
-        {open ? <ChevronUp size={18} className="text-muted-foreground" /> : <ChevronDown size={18} className="text-muted-foreground" />}
+        <div className={`p-1 rounded-md bg-muted/30 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+          <ChevronDown size={14} className="text-muted-foreground" />
+        </div>
       </button>
-      {open && <div className="px-5 pb-5 pt-2 border-t border-border">{children}</div>}
+      {open && <div className="px-5 pb-5 pt-3 border-t border-border/30 animate-fade">{children}</div>}
     </div>
   );
 }
@@ -31,13 +33,13 @@ function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
 }) {
   if (type === 'text') {
     return (
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <label className="text-xs text-muted-foreground font-medium">{label}</label>
         <input
           type="text"
           value={value as string}
           onChange={e => onChange(e.target.value)}
-          className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-shadow"
+          className="input-premium w-full"
         />
       </div>
     );
@@ -45,27 +47,27 @@ function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
   if (type === 'slider') {
     const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
     return (
-      <div className="space-y-1">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs text-muted-foreground font-medium">{label}</label>
-          <span className="text-xs font-mono text-primary">{(numVal * 100).toFixed(0)}%</span>
+          <span className="text-xs font-mono text-primary font-semibold bg-primary/10 px-2 py-0.5 rounded-md">{(numVal * 100).toFixed(0)}%</span>
         </div>
         <input
           type="range"
           min="0" max="0.9" step="0.01"
           value={numVal}
           onChange={e => onChange(parseFloat(e.target.value))}
-          className="w-full accent-primary h-1.5"
+          className="w-full accent-primary h-1.5 cursor-pointer"
         />
       </div>
     );
   }
   const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       <label className="text-xs text-muted-foreground font-medium">{label}</label>
       <div className="relative">
-        {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{prefix}</span>}
+        {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground/60 font-mono">{prefix}</span>}
         <input
           type="number"
           step={type === 'percent' ? '0.1' : '1'}
@@ -74,9 +76,9 @@ function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
             const raw = parseFloat(e.target.value) || 0;
             onChange(type === 'percent' ? raw / 100 : raw);
           }}
-          className={`w-full bg-muted/50 border border-border rounded-md py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-shadow ${prefix ? 'pl-10 pr-3' : 'px-3'}`}
+          className={`input-premium w-full ${prefix ? 'pl-10' : ''}`}
         />
-        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>}
+        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground/60 font-mono">{suffix}</span>}
       </div>
     </div>
   );
@@ -106,15 +108,18 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-2xl text-foreground">Dados do Projeto</h1>
+      <div className="flex items-center justify-between animate-fade">
+        <div>
+          <p className="text-xs text-primary font-semibold uppercase tracking-[0.2em] mb-1">Parâmetros</p>
+          <h1 className="font-display text-2xl text-foreground">Dados do Projeto</h1>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => { onReset(projeto.id); toast.success('Projeto resetado'); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-muted text-muted-foreground hover:text-foreground transition-colors active:scale-95">
+            className="btn-ghost text-xs">
             <RotateCcw size={14} /> Resetar
           </button>
           <button onClick={() => { localStorage.setItem('viabilidade_projetos', JSON.stringify([projeto])); toast.success('Projeto salvo!'); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity active:scale-95">
+            className="btn-primary text-xs !px-4 !py-2">
             <Save size={14} /> Salvar
           </button>
         </div>
@@ -191,28 +196,25 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
       </Section>
 
       <Section title="8 — Comparáveis de Mercado" defaultOpen={false}>
-        <div className="space-y-3">
-          <div className="hidden sm:grid grid-cols-[1fr_100px_140px_100px_40px] gap-2 text-xs text-muted-foreground font-medium px-1">
+        <div className="space-y-3 mt-1">
+          <div className="hidden sm:grid grid-cols-[1fr_100px_140px_100px_40px] gap-2 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider px-1">
             <span>Descrição</span><span>Área (m²)</span><span>Preço (R$)</span><span>R$/m²</span><span></span>
           </div>
           {projeto.comparaveis.map((comp, idx) => (
             <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_100px_140px_100px_40px] gap-2 items-center">
-              <input className="bg-muted/50 border border-border rounded-md px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                value={comp.descricao} onChange={e => updateComp(idx, 'descricao', e.target.value)} placeholder="Descrição" />
-              <input className="bg-muted/50 border border-border rounded-md px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                type="number" value={comp.area} onChange={e => updateComp(idx, 'area', parseFloat(e.target.value) || 0)} />
-              <input className="bg-muted/50 border border-border rounded-md px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                type="number" value={comp.preco} onChange={e => updateComp(idx, 'preco', parseFloat(e.target.value) || 0)} />
+              <input className="input-premium" value={comp.descricao} onChange={e => updateComp(idx, 'descricao', e.target.value)} placeholder="Descrição" />
+              <input className="input-premium" type="number" value={comp.area} onChange={e => updateComp(idx, 'area', parseFloat(e.target.value) || 0)} />
+              <input className="input-premium" type="number" value={comp.preco} onChange={e => updateComp(idx, 'preco', parseFloat(e.target.value) || 0)} />
               <span className="text-sm font-mono text-muted-foreground px-1">
                 {comp.area > 0 ? (comp.preco / comp.area).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : '—'}
               </span>
-              <button onClick={() => removeComp(idx)} className="text-muted-foreground hover:text-destructive transition-colors active:scale-90">
+              <button onClick={() => removeComp(idx)} className="text-muted-foreground hover:text-destructive transition-colors active:scale-90 p-1">
                 <Trash2 size={14} />
               </button>
             </div>
           ))}
           {projeto.comparaveis.length < 6 && (
-            <button onClick={addComp} className="flex items-center gap-1.5 text-xs text-primary hover:opacity-80 transition-opacity active:scale-95">
+            <button onClick={addComp} className="flex items-center gap-1.5 text-xs text-primary font-medium hover:opacity-80 transition-opacity active:scale-95 mt-2">
               <Plus size={14} /> Adicionar comparável
             </button>
           )}
