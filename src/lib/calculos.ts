@@ -1,4 +1,4 @@
-import { ProjetoInputs, CenarioResult, AnalyseMercado, Parecer, AuditCheck, ProjetoCompleto } from './types';
+import { ProjetoInputs, CenarioResult, AnalyseMercado, Parecer, AuditCheck, ProjetoCompleto, JurosObraMes, FluxoCaixaMes } from './types';
 
 export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, mesesObra: number): number {
   let saldo = 0, totalJuros = 0;
@@ -7,6 +7,22 @@ export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, m
     totalJuros += saldo * taxaMensal;
   }
   return totalJuros;
+}
+
+export function gerarCronogramaJuros(valorFinanciado: number, taxaAnual: number, mesesObra: number): JurosObraMes[] {
+  const i = Math.pow(1 + taxaAnual, 1 / 12) - 1;
+  return Array.from({ length: mesesObra }, (_, idx) => {
+    const mes = idx + 1;
+    const saldo = valorFinanciado * (mes / mesesObra);
+    const juros = saldo * i;
+    return { mes, liberacao: valorFinanciado / mesesObra, saldo, juros };
+  });
+}
+
+export function calcSaldoDevedor(pv: number, rateAnual: number, n: number, k: number): number {
+  const i = Math.pow(1 + rateAnual, 1 / 12) - 1;
+  const pmt = pv * (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1);
+  return pv * Math.pow(1 + i, k) - pmt * (Math.pow(1 + i, k) - 1) / i;
 }
 
 function somaPreObra(p: ProjetoInputs): number {
@@ -52,46 +68,118 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
 
   const carregoMensal = p.condominio + p.iptuAnual / 12;
   const fluxos: number[] = [];
-  
+
   // Mês 0: terreno
   fluxos.push(-p.valorLote);
-  
+
   // Pré-obra
   const preObraMensal = totalPreObraSoftCosts / Math.max(1, p.mesesPreObra);
   for (let i = 0; i < p.mesesPreObra; i++) {
     fluxos.push(-preObraMensal - carregoMensal);
   }
-  
+
   // Obra
   const construcaoMensal = custoTotalConstrucao / Math.max(1, p.mesesObra);
   const libMensal = valorFinanciado / Math.max(1, p.mesesObra);
   let saldoObra = 0;
+  const hardMensal = totalDuranteObraHard / Math.max(1, p.mesesObra);
   for (let i = 0; i < p.mesesObra; i++) {
     saldoObra += libMensal;
     const jurosMes = saldoObra * taxaMensal;
-    const hardMensal = (totalDuranteObraHard) / Math.max(1, p.mesesObra);
     fluxos.push(-construcaoMensal + libMensal - jurosMes - carregoMensal - hardMensal);
   }
-  
+
   // Pós-obra
   for (let i = 0; i < mesesPos; i++) {
     fluxos.push(-pmt - carregoMensal);
   }
-  
+
   // Venda no último mês
-  const saldoDevedor = valorFinanciado; // simplificação
+  const kParcelas = mesesPos; // parcelas pagas pós-obra
+  const saldoDevedor = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
   const comissaoVal = vgvEfetivo * p.comissao;
+
+  // Calcular custo total para IR
+  const carregoTotal = carregoMensal * (p.mesesPreObra + p.mesesObra + mesesPos);
   const custoTotalAll = p.valorLote + custoTotalConstrucao + totalPreObraSoftCosts + totalDuranteObraHard
-    + jurosObra + carregoMensal * (p.mesesPreObra + p.mesesObra + mesesPos)
-    + pmt * mesesPos;
+    + jurosObra + carregoTotal + pmt * mesesPos;
   const recLiq = vgvEfetivo - comissaoVal;
   const lucroBruto = recLiq - custoTotalAll;
   const irVal = Math.max(0, lucroBruto) * p.ir;
-  
+
   const vendaNet = vgvEfetivo - comissaoVal - irVal - saldoDevedor;
   fluxos[fluxos.length - 1] += vendaNet;
-  
+
   return fluxos;
+}
+
+function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
+  custoTotalConstrucao: number, valorFinanciado: number,
+  totalPreObraSoftCosts: number, totalDuranteObraHard: number,
+  taxaMensal: number, pmt: number, jurosObra: number,
+  vgvEfetivo: number): FluxoCaixaMes[] {
+
+  const carregoMensal = p.condominio + p.iptuAnual / 12;
+  const result: FluxoCaixaMes[] = [];
+  let acum = 0;
+
+  // Mês 0
+  const f0 = -p.valorLote;
+  acum += f0;
+  result.push({ mes: 0, fase: 'Compra', custoEquity: -p.valorLote, liberacaoBanco: 0, juros: 0, pmtPos: 0, vendaIRQuit: 0, fluxoLiquido: f0, acumulado: acum });
+
+  // Pré-obra
+  const preObraMensal = totalPreObraSoftCosts / Math.max(1, p.mesesPreObra);
+  for (let i = 0; i < p.mesesPreObra; i++) {
+    const custo = -(preObraMensal + carregoMensal);
+    acum += custo;
+    result.push({ mes: i + 1, fase: 'Pré-Obra', custoEquity: custo, liberacaoBanco: 0, juros: 0, pmtPos: 0, vendaIRQuit: 0, fluxoLiquido: custo, acumulado: acum });
+  }
+
+  // Obra
+  const construcaoMensal = custoTotalConstrucao / Math.max(1, p.mesesObra);
+  const libMensal = valorFinanciado / Math.max(1, p.mesesObra);
+  const hardMensal = totalDuranteObraHard / Math.max(1, p.mesesObra);
+  let saldoObra = 0;
+  for (let i = 0; i < p.mesesObra; i++) {
+    saldoObra += libMensal;
+    const jurosMes = saldoObra * taxaMensal;
+    const custoEq = -(construcaoMensal + carregoMensal + hardMensal);
+    const fliq = custoEq + libMensal - jurosMes;
+    acum += fliq;
+    result.push({
+      mes: p.mesesPreObra + i + 1, fase: 'Obra',
+      custoEquity: custoEq, liberacaoBanco: libMensal, juros: -jurosMes,
+      pmtPos: 0, vendaIRQuit: 0, fluxoLiquido: fliq, acumulado: acum
+    });
+  }
+
+  // Pós-obra
+  const kParcelas = mesesPos;
+  const saldoDevedor = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
+  const comissaoVal = vgvEfetivo * p.comissao;
+  const carregoTotal = carregoMensal * (p.mesesPreObra + p.mesesObra + mesesPos);
+  const custoTotalAll = p.valorLote + custoTotalConstrucao + totalPreObraSoftCosts + totalDuranteObraHard
+    + jurosObra + carregoTotal + pmt * mesesPos;
+  const recLiq = vgvEfetivo - comissaoVal;
+  const lucroBruto = recLiq - custoTotalAll;
+  const irVal = Math.max(0, lucroBruto) * p.ir;
+  const vendaNet = vgvEfetivo - comissaoVal - irVal - saldoDevedor;
+
+  for (let i = 0; i < mesesPos; i++) {
+    const mesNum = p.mesesPreObra + p.mesesObra + i + 1;
+    const isLast = i === mesesPos - 1;
+    const fliq = -pmt - carregoMensal + (isLast ? vendaNet : 0);
+    acum += fliq;
+    result.push({
+      mes: mesNum, fase: 'Pós-Obra',
+      custoEquity: -carregoMensal, liberacaoBanco: 0, juros: 0,
+      pmtPos: -pmt, vendaIRQuit: isLast ? vendaNet : 0,
+      fluxoLiquido: fliq, acumulado: acum
+    });
+  }
+
+  return result;
 }
 
 function calcularCenario(
@@ -118,29 +206,39 @@ function calcularCenario(
   const irValor = baseIR * p.ir;
   const lucroLiquido = lucroBruto - irValor;
 
-  const exposicaoMaxima = custoTotal - valorFinanciado + totalPos;
+  // Build cash flows
+  const fluxosCaixa = construirFluxos(p, mesesPos, custoTotalConstrucao, valorFinanciado,
+    totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
+
+  // Exposição = pico negativo do fluxo acumulado (equity invested)
+  let acum = 0;
+  let picoNeg = 0;
+  for (const fc of fluxosCaixa) {
+    acum += fc;
+    if (acum < picoNeg) picoNeg = acum;
+  }
+  const exposicaoMaxima = Math.abs(picoNeg);
+
   const roe = exposicaoMaxima > 0 ? lucroLiquido / exposicaoMaxima : 0;
   const margem = vgvEfetivo > 0 ? lucroLiquido / vgvEfetivo : 0;
   const duracaoTotal = p.mesesPreObra + p.mesesObra + mesesPos;
 
-  const saldoNaVenda = valorFinanciado - (pmt - valorFinanciado * taxaMensal) * mesesPos * 0.5;
+  const kParcelas = mesesPos;
+  const saldoNaVenda = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
   const moic = exposicaoMaxima > 0 ? (exposicaoMaxima + lucroLiquido) / exposicaoMaxima : 0;
-
-  const fluxosCaixa = construirFluxos(p, mesesPos, custoTotalConstrucao, valorFinanciado,
-    totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
 
   const tir = calcularTIR(fluxosCaixa);
   const vpl = calcularVPL(fluxosCaixa, p.tma);
 
   // Payback descontado
   const txMensalTMA = Math.pow(1 + p.tma, 1 / 12) - 1;
-  let acum = 0, paybackDescontado = duracaoTotal;
+  let acumPB = 0, paybackDescontado = duracaoTotal;
   for (let i = 0; i < fluxosCaixa.length; i++) {
-    acum += fluxosCaixa[i] / Math.pow(1 + txMensalTMA, i);
-    if (acum >= 0) { paybackDescontado = i; break; }
+    acumPB += fluxosCaixa[i] / Math.pow(1 + txMensalTMA, i);
+    if (acumPB >= 0) { paybackDescontado = i; break; }
   }
 
-  // Break-even VGV (busca binária)
+  // Break-even VGV
   let lo = 0, hi = vgvEfetivo * 2;
   for (let iter = 0; iter < 50; iter++) {
     const mid = (lo + hi) / 2;
@@ -152,10 +250,15 @@ function calcularCenario(
   }
   const breakEvenVGV = (lo + hi) / 2;
 
+  // Fluxo detalhado
+  const fluxoDetalhado = construirFluxoDetalhado(p, mesesPos, custoTotalConstrucao, valorFinanciado,
+    totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
+
   return {
     cenario: cenarioLabel, mesesPos, lucroLiquido, lucroBruto, irValor, custoTotal,
     exposicaoMaxima, roe, margem, receitaLiquida, totalPos, saldoNaVenda,
-    duracaoTotal, tir, vpl, paybackDescontado, moic, breakEvenVGV, fluxosCaixa
+    duracaoTotal, tir, vpl, paybackDescontado, moic, breakEvenVGV, fluxosCaixa,
+    carregoPos, prestacoesPagas, fluxoDetalhado
   };
 }
 
@@ -217,7 +320,7 @@ export function gerarParecer(score: number, margem: number, tir: number, tma: nu
 
 export function gerarAuditChecks(c: CenarioResult, mercado: AnalyseMercado, p: ProjetoInputs, vgvEfetivo: number): AuditCheck[] {
   const bufferBE = vgvEfetivo > 0 ? (vgvEfetivo - c.breakEvenVGV) / vgvEfetivo : 0;
-  const checks: AuditCheck[] = [
+  return [
     { label: 'VGV > Break-even', status: vgvEfetivo > c.breakEvenVGV ? 'ok' : 'fail', detail: `Break-even: R$ ${(c.breakEvenVGV / 1000).toFixed(0)}k` },
     { label: 'TIR > TMA', status: c.tir > p.tma ? 'ok' : 'fail', detail: `TIR: ${(c.tir * 100).toFixed(1)}% vs TMA: ${(p.tma * 100).toFixed(1)}%` },
     { label: 'VPL positivo', status: c.vpl > 0 ? 'ok' : 'fail', detail: `VPL: R$ ${(c.vpl / 1000).toFixed(0)}k` },
@@ -231,7 +334,6 @@ export function gerarAuditChecks(c: CenarioResult, mercado: AnalyseMercado, p: P
     { label: 'Spread TIR vs TMA positivo', status: c.tir > p.tma ? 'ok' : 'fail', detail: `Spread: ${((c.tir - p.tma) * 100).toFixed(1)}pp` },
     { label: 'Payback dentro do horizonte', status: c.paybackDescontado <= c.duracaoTotal ? 'ok' : 'fail', detail: `${c.paybackDescontado} meses` },
   ];
-  return checks;
 }
 
 export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
@@ -253,14 +355,12 @@ export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
   const totalPreObra = totalPreObraSoftCosts + carregoPre;
   const totalDuranteObra = totalDuranteObraHard + carregoDuranteObra + jurosObra;
 
-  const args = [p, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts,
-    totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo] as const;
-
-  const cenA = calcularCenario(p, 'A', p.mesesPosA, ...args.slice(1) as [number, number, number, number, number, number, number, number]);
-  const cenB = calcularCenario(p, 'B', p.mesesPosB, ...args.slice(1) as [number, number, number, number, number, number, number, number]);
-  const cenC = calcularCenario(p, 'C', p.mesesPosC, ...args.slice(1) as [number, number, number, number, number, number, number, number]);
+  const cenA = calcularCenario(p, 'A', p.mesesPosA, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
+  const cenB = calcularCenario(p, 'B', p.mesesPosB, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
+  const cenC = calcularCenario(p, 'C', p.mesesPosC, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
 
   const mercado = analisarMercado(p, vgvEfetivo);
+  const cronogramaJuros = gerarCronogramaJuros(valorFinanciado, p.taxaAnual, p.mesesObra);
 
   const bufferBE = vgvEfetivo > 0 ? (vgvEfetivo - cenB.breakEvenVGV) / vgvEfetivo : 0;
   const score = calcularScore(cenB.roe, cenB.margem, cenB.vpl, bufferBE);
@@ -269,7 +369,7 @@ export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
 
   return {
     inputs: p, cenarios: { A: cenA, B: cenB, C: cenC },
-    mercado, parecer, auditChecks,
+    mercado, parecer, auditChecks, cronogramaJuros,
     totalPreObra, totalDuranteObra, custoTotalConstrucao, valorFinanciado, jurosObra, pmt
   };
 }

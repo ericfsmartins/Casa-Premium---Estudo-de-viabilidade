@@ -7,31 +7,25 @@ export interface Comparavel {
 export interface ProjetoInputs {
   id: string;
   nome: string;
-  // Dados do imóvel
   valorLote: number;
   areaLote: number;
   areaConstruida: number;
   custoPorM2: number;
   valorVenda: number;
   precoMercado: number;
-  // Financiamento
   percLTV: number;
   taxaAnual: number;
   prazoMeses: number;
-  // Cronograma
   mesesPreObra: number;
   mesesObra: number;
   mesesPosA: number;
   mesesPosB: number;
   mesesPosC: number;
-  // Custos fixos
   condominio: number;
   iptuAnual: number;
-  // Impostos
   comissao: number;
   ir: number;
   tma: number;
-  // Pré-obra
   percITBI: number;
   escrituraRegistro: number;
   projetoArquitetonico: number;
@@ -43,13 +37,30 @@ export interface ProjetoInputs {
   seguroInicial: number;
   alvaraPrefeitura: number;
   placaObra: number;
-  // Durante obra
   inssObra: number;
   vistoriasBanco: number;
   habitese: number;
   averbacaoCartorio: number;
-  // Comparáveis
   comparaveis: Comparavel[];
+}
+
+export interface JurosObraMes {
+  mes: number;
+  liberacao: number;
+  saldo: number;
+  juros: number;
+}
+
+export interface FluxoCaixaMes {
+  mes: number;
+  fase: string;
+  custoEquity: number;
+  liberacaoBanco: number;
+  juros: number;
+  pmtPos: number;
+  vendaIRQuit: number;
+  fluxoLiquido: number;
+  acumulado: number;
 }
 
 export interface CenarioResult {
@@ -72,6 +83,9 @@ export interface CenarioResult {
   moic: number;
   breakEvenVGV: number;
   fluxosCaixa: number[];
+  carregoPos: number;
+  prestacoesPagas: number;
+  fluxoDetalhado: FluxoCaixaMes[];
 }
 
 export interface AnalyseMercado {
@@ -102,6 +116,7 @@ export interface ProjetoCompleto {
   mercado: AnalyseMercado;
   parecer: Parecer;
   auditChecks: AuditCheck[];
+  cronogramaJuros: JurosObraMes[];
   totalPreObra: number;
   totalDuranteObra: number;
   custoTotalConstrucao: number;
