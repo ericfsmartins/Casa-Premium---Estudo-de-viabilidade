@@ -213,7 +213,7 @@ function calcularCenario(
   // Exposição = pico negativo do fluxo acumulado (equity invested)
   // No mês da venda, o investidor paga PMT+carrego ANTES de receber a venda,
   // então separamos outflow e inflow do último mês para capturar o pico real.
-  const carregoMensal = p.condominio + p.iptuAnual / 12;
+  const carregoMensalExp = p.condominio + p.iptuAnual / 12;
   let acum = 0;
   let picoNeg = 0;
   for (let i = 0; i < fluxosCaixa.length; i++) {
