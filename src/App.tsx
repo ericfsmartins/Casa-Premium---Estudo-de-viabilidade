@@ -32,7 +32,7 @@ function AppContent() {
   return (
     <>
       <Navbar resultado={resultadoAtivo} />
-      <main className="pt-16 md:pt-16 pb-8 px-4 container mx-auto max-w-7xl">
+      <main className="pt-20 md:pt-20 pb-10 px-4 md:px-6 container mx-auto max-w-7xl">
         <Routes>
           <Route path="/" element={<HomePage resultados={todosResultados} onSetActive={setActiveId} onAdd={(nome) => { addProjeto(nome); }} />} />
           <Route path="/projeto/:id" element={

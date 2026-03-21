@@ -1,6 +1,6 @@
 import { ProjetoCompleto } from '@/lib/types';
 import { fmtBRL, fmtPct } from '@/lib/formatters';
-import { Plus, TrendingUp, BarChart3, Target, Award } from 'lucide-react';
+import { Plus, TrendingUp, BarChart3, Target, Award, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface HomePageProps {
@@ -10,14 +10,14 @@ interface HomePageProps {
 }
 
 function ScoreBadge({ score }: { score: number }) {
-  const color = score >= 75 ? 'bg-success/20 text-success border-success/30'
-    : score >= 55 ? 'bg-warning/20 text-warning border-warning/30'
-    : score >= 35 ? 'bg-warning/20 text-warning border-warning/30'
-    : 'bg-destructive/20 text-destructive border-destructive/30';
+  const color = score >= 75 ? 'text-success border-success/20 bg-success/8'
+    : score >= 55 ? 'text-warning border-warning/20 bg-warning/8'
+    : score >= 35 ? 'text-warning border-warning/20 bg-warning/8'
+    : 'text-destructive border-destructive/20 bg-destructive/8';
   const label = score >= 75 ? 'Excelente' : score >= 55 ? 'Viável' : score >= 35 ? 'Risco' : 'Inviável';
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border ${color}`}>
-      {label} — {score}pts
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${color}`}>
+      {label} · {score}
     </span>
   );
 }
@@ -25,11 +25,13 @@ function ScoreBadge({ score }: { score: number }) {
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   return (
-    <div className="h-1 bg-muted rounded-full overflow-hidden">
-      <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
+    <div className="h-1 bg-muted/50 rounded-full overflow-hidden">
+      <div className={`h-full rounded-full transition-all duration-1000 ease-out ${color}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
+
+const animClasses = ['animate-in-1', 'animate-in-2', 'animate-in-3', 'animate-in-4', 'animate-in-5', 'animate-in-6'];
 
 export default function HomePage({ resultados, onSetActive, onAdd }: HomePageProps) {
   const navigate = useNavigate();
@@ -41,28 +43,28 @@ export default function HomePage({ resultados, onSetActive, onAdd }: HomePagePro
 
   const handleAdd = () => {
     const nome = prompt('Nome do novo projeto:');
-    if (nome) {
-      onAdd(nome);
-    }
+    if (nome) onAdd(nome);
   };
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* Header */}
+      <div className="flex items-end justify-between flex-wrap gap-4 animate-fade">
         <div>
-          <h1 className="font-display text-3xl text-foreground tracking-tight">Meus Projetos</h1>
-          <p className="text-sm text-muted-foreground mt-1">Clique em um projeto para ver o dashboard completo e editar os números</p>
+          <p className="text-xs text-primary font-semibold uppercase tracking-[0.2em] mb-2">Portfólio</p>
+          <h1 className="font-display text-3xl md:text-4xl text-foreground tracking-tight">Meus Projetos</h1>
+          <p className="text-sm text-muted-foreground mt-2 max-w-md">
+            Clique em um projeto para acessar o dashboard completo com análise financeira e editar os números.
+          </p>
         </div>
-        <button
-          onClick={handleAdd}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity active:scale-95"
-        >
+        <button onClick={handleAdd} className="btn-primary">
           <Plus size={16} /> Novo Projeto
         </button>
       </div>
 
+      {/* Project Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {resultados.map((r) => {
+        {resultados.map((r, idx) => {
           const c = r.cenarios.B;
           const lucroPositivo = c.lucroLiquido > 0;
 
@@ -70,27 +72,33 @@ export default function HomePage({ resultados, onSetActive, onAdd }: HomePagePro
             <button
               key={r.inputs.id}
               onClick={() => handleClick(r.inputs.id)}
-              className="group text-left bg-card border border-border rounded-xl p-6 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 active:scale-[0.98]"
+              className={`group text-left glass-card gradient-border rounded-xl p-6 hover:-translate-y-1.5 transition-all duration-300 active:scale-[0.98] ${animClasses[idx] || 'animate-in-6'}`}
             >
+              {/* Header */}
               <div className="flex items-start justify-between mb-5">
                 <div>
-                  <h2 className="font-display text-lg text-foreground group-hover:text-primary transition-colors">{r.inputs.nome}</h2>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Cenário B · {c.duracaoTotal} meses</p>
+                  <h2 className="font-display text-lg text-foreground group-hover:text-primary transition-colors duration-300">
+                    {r.inputs.nome}
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Cenário B · {c.duracaoTotal} meses
+                  </p>
                 </div>
                 <ScoreBadge score={r.parecer.score} />
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-5">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider">
+              {/* KPIs Grid */}
+              <div className="grid grid-cols-2 gap-x-5 gap-y-4 mb-5">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                     <TrendingUp size={11} /> Lucro Líquido
                   </div>
                   <p className={`font-display text-xl font-bold ${lucroPositivo ? 'text-success' : 'text-destructive'}`}>
                     {fmtBRL(c.lucroLiquido)}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                     <BarChart3 size={11} /> ROE
                   </div>
                   <p className={`font-display text-xl font-bold ${c.roe >= 0.6 ? 'text-success' : c.roe >= 0.3 ? 'text-warning' : 'text-destructive'}`}>
@@ -98,8 +106,8 @@ export default function HomePage({ resultados, onSetActive, onAdd }: HomePagePro
                   </p>
                   <MiniBar value={c.roe} max={1} color={c.roe >= 0.6 ? 'bg-success' : c.roe >= 0.3 ? 'bg-warning' : 'bg-destructive'} />
                 </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                     <Target size={11} /> Margem Líquida
                   </div>
                   <p className={`font-display text-xl font-bold ${c.margem >= 0.20 ? 'text-success' : c.margem >= 0.15 ? 'text-warning' : 'text-destructive'}`}>
@@ -107,26 +115,27 @@ export default function HomePage({ resultados, onSetActive, onAdd }: HomePagePro
                   </p>
                   <MiniBar value={c.margem} max={0.30} color={c.margem >= 0.20 ? 'bg-success' : c.margem >= 0.15 ? 'bg-warning' : 'bg-destructive'} />
                 </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                     <Award size={11} /> Score
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-baseline gap-1.5">
                     <p className={`font-display text-xl font-bold ${r.parecer.score >= 75 ? 'text-success' : r.parecer.score >= 55 ? 'text-warning' : 'text-destructive'}`}>
                       {r.parecer.score}
                     </p>
-                    <span className="text-[10px] text-muted-foreground">/ 100</span>
+                    <span className="text-[10px] text-muted-foreground/60">/ 100</span>
                   </div>
                   <MiniBar value={r.parecer.score} max={100} color={r.parecer.score >= 75 ? 'bg-success' : r.parecer.score >= 55 ? 'bg-warning' : 'bg-destructive'} />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border/50">
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-4 border-t border-border/30">
                 <span className="text-[11px] text-muted-foreground">
                   VGV: {fmtBRL(Math.max(r.inputs.valorVenda, r.inputs.precoMercado * r.inputs.areaConstruida))}
                 </span>
-                <span className="text-[11px] text-primary font-medium group-hover:underline">
-                  Ver dashboard →
+                <span className="flex items-center gap-1 text-[11px] text-primary font-medium group-hover:gap-2 transition-all duration-300">
+                  Ver dashboard <ArrowUpRight size={12} />
                 </span>
               </div>
             </button>
