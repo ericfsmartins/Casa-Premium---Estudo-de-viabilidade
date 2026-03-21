@@ -211,11 +211,22 @@ function calcularCenario(
     totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
 
   // Exposição = pico negativo do fluxo acumulado (equity invested)
+  // No mês da venda, o investidor paga PMT+carrego ANTES de receber a venda,
+  // então separamos outflow e inflow do último mês para capturar o pico real.
+  const carregoMensal = p.condominio + p.iptuAnual / 12;
   let acum = 0;
   let picoNeg = 0;
-  for (const fc of fluxosCaixa) {
-    acum += fc;
-    if (acum < picoNeg) picoNeg = acum;
+  for (let i = 0; i < fluxosCaixa.length; i++) {
+    if (i === fluxosCaixa.length - 1 && mesesPos > 0) {
+      // Último mês: primeiro debita outflow, mede pico, depois credita venda
+      const outflow = -pmt - carregoMensal;
+      acum += outflow;
+      if (acum < picoNeg) picoNeg = acum;
+      acum += fluxosCaixa[i] - outflow; // restante = venda líquida
+    } else {
+      acum += fluxosCaixa[i];
+      if (acum < picoNeg) picoNeg = acum;
+    }
   }
   const exposicaoMaxima = Math.abs(picoNeg);
 
