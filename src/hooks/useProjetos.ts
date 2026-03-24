@@ -9,7 +9,14 @@ const ACTIVE_KEY = 'viabilidade_ativo';
 function loadProjetos(): ProjetoInputs[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
-    if (data) return JSON.parse(data);
+    if (data) {
+      const parsed = JSON.parse(data) as ProjetoInputs[];
+      // Backward compat: add modalidadeFinanciamento if missing
+      return parsed.map(p => ({
+        ...p,
+        modalidadeFinanciamento: p.modalidadeFinanciamento || 'terreno_construcao',
+      }));
+    }
   } catch { /* ignore */ }
   return [criarProjetoPadrao()];
 }
