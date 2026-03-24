@@ -46,6 +46,7 @@ function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
   }
   if (type === 'slider') {
     const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+    const sliderMax = max ?? 0.9;
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -54,7 +55,7 @@ function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
         </div>
         <input
           type="range"
-          min="0" max="0.9" step="0.01"
+          min="0" max={String(sliderMax)} step="0.01"
           value={numVal}
           onChange={e => onChange(parseFloat(e.target.value))}
           className="w-full accent-primary h-1.5 cursor-pointer"
