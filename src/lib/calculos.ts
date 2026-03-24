@@ -358,7 +358,8 @@ export function gerarAuditChecks(c: CenarioResult, mercado: AnalyseMercado, p: P
 
 export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
   const custoTotalConstrucao = p.areaConstruida * p.custoPorM2;
-  const baseFinanciamento = p.valorLote + custoTotalConstrucao;
+  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const baseFinanciamento = isSC ? custoTotalConstrucao : (p.valorLote + custoTotalConstrucao);
   const valorFinanciado = baseFinanciamento * p.percLTV;
   const taxaMensal = Math.pow(1 + p.taxaAnual, 1 / 12) - 1;
   const pmt = valorFinanciado * taxaMensal / (1 - Math.pow(1 + taxaMensal, -p.prazoMeses));
