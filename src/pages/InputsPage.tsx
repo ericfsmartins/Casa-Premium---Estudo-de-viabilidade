@@ -27,9 +27,9 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   );
 }
 
-function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
+function Field({ label, value, onChange, type = 'currency', suffix, prefix, max }: {
   label: string; value: number | string; onChange: (v: number | string) => void;
-  type?: 'currency' | 'percent' | 'number' | 'text' | 'slider'; suffix?: string; prefix?: string;
+  type?: 'currency' | 'percent' | 'number' | 'text' | 'slider'; suffix?: string; prefix?: string; max?: number;
 }) {
   if (type === 'text') {
     return (
