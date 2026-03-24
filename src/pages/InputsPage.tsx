@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ChevronDown, Plus, Trash2, RotateCcw, Save } from 'lucide-react';
-import { ProjetoInputs, Comparavel } from '@/lib/types';
+import { ProjetoInputs, Comparavel, ModalidadeFinanciamento } from '@/lib/types';
 import { toast } from 'sonner';
 
 interface InputsPageProps {
@@ -27,9 +27,9 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   );
 }
 
-function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
+function Field({ label, value, onChange, type = 'currency', suffix, prefix, max }: {
   label: string; value: number | string; onChange: (v: number | string) => void;
-  type?: 'currency' | 'percent' | 'number' | 'text' | 'slider'; suffix?: string; prefix?: string;
+  type?: 'currency' | 'percent' | 'number' | 'text' | 'slider'; suffix?: string; prefix?: string; max?: number;
 }) {
   if (type === 'text') {
     return (
@@ -46,6 +46,7 @@ function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
   }
   if (type === 'slider') {
     const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+    const sliderMax = max ?? 0.9;
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -54,7 +55,7 @@ function Field({ label, value, onChange, type = 'currency', suffix, prefix }: {
         </div>
         <input
           type="range"
-          min="0" max="0.9" step="0.01"
+          min="0" max={String(sliderMax)} step="0.01"
           value={numVal}
           onChange={e => onChange(parseFloat(e.target.value))}
           className="w-full accent-primary h-1.5 cursor-pointer"
@@ -138,10 +139,51 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
       </Section>
 
       <Section title="2 — Financiamento">
-        <div className={grid}>
-          <Field label="% Financiamento (LTV)" value={projeto.percLTV} onChange={v => set('percLTV', v as number)} type="slider" />
-          <Field label="Taxa de juros anual" value={projeto.taxaAnual} onChange={v => set('taxaAnual', v as number)} type="percent" suffix="%" />
-          <Field label="Prazo (meses)" value={projeto.prazoMeses} onChange={v => set('prazoMeses', v as number)} />
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-muted-foreground font-medium mb-2 block">Modalidade de financiamento</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  set('modalidadeFinanciamento', 'terreno_construcao');
+                  if (projeto.percLTV > 0.80) set('percLTV', 0.80);
+                }}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  projeto.modalidadeFinanciamento === 'terreno_construcao'
+                    ? 'bg-primary text-primary-foreground shadow-md'
+                    : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
+                }`}
+              >
+                Terreno + Construção
+              </button>
+              <button
+                onClick={() => set('modalidadeFinanciamento', 'so_construcao')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  projeto.modalidadeFinanciamento === 'so_construcao'
+                    ? 'bg-primary text-primary-foreground shadow-md'
+                    : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
+                }`}
+              >
+                Só Construção
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 mt-1.5">
+              {projeto.modalidadeFinanciamento === 'terreno_construcao'
+                ? 'Banco financia até 80% do (terreno + construção). Liberação do terreno no mês 0 e construção em tranches.'
+                : 'Banco financia até 100% da construção. O terreno sai 100% do seu caixa (equity).'}
+            </p>
+          </div>
+          <div className={grid}>
+            <Field
+              label="% Financiamento (LTV)"
+              value={projeto.percLTV}
+              onChange={v => set('percLTV', v as number)}
+              type="slider"
+              max={projeto.modalidadeFinanciamento === 'so_construcao' ? 1.0 : 0.80}
+            />
+            <Field label="Taxa de juros anual" value={projeto.taxaAnual} onChange={v => set('taxaAnual', v as number)} type="percent" suffix="%" />
+            <Field label="Prazo (meses)" value={projeto.prazoMeses} onChange={v => set('prazoMeses', v as number)} />
+          </div>
         </div>
       </Section>
 

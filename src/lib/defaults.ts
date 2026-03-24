@@ -5,6 +5,7 @@ export function criarProjetoPadrao(nome = 'Casa Alpha'): ProjetoInputs {
   return {
     id: v4Fallback(),
     nome,
+    modalidadeFinanciamento: 'terreno_construcao',
     valorLote: 500000,
     areaLote: 300,
     areaConstruida: 250,

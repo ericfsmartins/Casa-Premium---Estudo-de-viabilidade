@@ -4,9 +4,12 @@ export interface Comparavel {
   preco: number;
 }
 
+export type ModalidadeFinanciamento = 'terreno_construcao' | 'so_construcao';
+
 export interface ProjetoInputs {
   id: string;
   nome: string;
+  modalidadeFinanciamento: ModalidadeFinanciamento;
   valorLote: number;
   areaLote: number;
   areaConstruida: number;

@@ -1,21 +1,24 @@
 import { ProjetoInputs, CenarioResult, AnalyseMercado, Parecer, AuditCheck, ProjetoCompleto, JurosObraMes, FluxoCaixaMes } from './types';
 
-export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, mesesObra: number): number {
-  let saldo = 0, totalJuros = 0;
+export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, mesesObra: number, saldoInicial = 0): number {
+  let saldo = saldoInicial, totalJuros = 0;
+  const libMensal = (valorFinanciado - saldoInicial) / Math.max(1, mesesObra);
   for (let i = 1; i <= mesesObra; i++) {
-    saldo += valorFinanciado / mesesObra;
+    saldo += libMensal;
     totalJuros += saldo * taxaMensal;
   }
   return totalJuros;
 }
 
-export function gerarCronogramaJuros(valorFinanciado: number, taxaAnual: number, mesesObra: number): JurosObraMes[] {
+export function gerarCronogramaJuros(valorFinanciado: number, taxaAnual: number, mesesObra: number, saldoInicial = 0): JurosObraMes[] {
   const i = Math.pow(1 + taxaAnual, 1 / 12) - 1;
+  const libTotal = valorFinanciado - saldoInicial;
+  const libMensal = libTotal / Math.max(1, mesesObra);
   return Array.from({ length: mesesObra }, (_, idx) => {
     const mes = idx + 1;
-    const saldo = valorFinanciado * (mes / mesesObra);
+    const saldo = saldoInicial + libMensal * mes;
     const juros = saldo * i;
-    return { mes, liberacao: valorFinanciado / mesesObra, saldo, juros };
+    return { mes, liberacao: libMensal, saldo, juros };
   });
 }
 
@@ -69,8 +72,13 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
   const carregoMensal = p.condominio + p.iptuAnual / 12;
   const fluxos: number[] = [];
 
-  // Mês 0: terreno
-  fluxos.push(-p.valorLote);
+  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  // In T+C mode, bank releases land portion at month 0
+  const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
+  const valorFinanciadoObra = valorFinanciado - bankLandRelease;
+
+  // Mês 0: terreno (equity portion = total - bank release)
+  fluxos.push(-(p.valorLote - bankLandRelease));
 
   // Pré-obra
   const preObraMensal = totalPreObraSoftCosts / Math.max(1, p.mesesPreObra);
@@ -78,10 +86,10 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
     fluxos.push(-preObraMensal - carregoMensal);
   }
 
-  // Obra
+  // Obra — only construction portion released in tranches
   const construcaoMensal = custoTotalConstrucao / Math.max(1, p.mesesObra);
-  const libMensal = valorFinanciado / Math.max(1, p.mesesObra);
-  let saldoObra = 0;
+  const libMensal = valorFinanciadoObra / Math.max(1, p.mesesObra);
+  let saldoObra = bankLandRelease; // bank already released land portion
   const hardMensal = totalDuranteObraHard / Math.max(1, p.mesesObra);
   for (let i = 0; i < p.mesesObra; i++) {
     saldoObra += libMensal;
@@ -95,11 +103,10 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
   }
 
   // Venda no último mês
-  const kParcelas = mesesPos; // parcelas pagas pós-obra
+  const kParcelas = mesesPos;
   const saldoDevedor = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
   const comissaoVal = vgvEfetivo * p.comissao;
 
-  // Calcular custo total para IR
   const carregoTotal = carregoMensal * (p.mesesPreObra + p.mesesObra + mesesPos);
   const custoTotalAll = p.valorLote + custoTotalConstrucao + totalPreObraSoftCosts + totalDuranteObraHard
     + jurosObra + carregoTotal + pmt * mesesPos;
@@ -123,10 +130,15 @@ function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
   const result: FluxoCaixaMes[] = [];
   let acum = 0;
 
+  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
+  const valorFinanciadoObra = valorFinanciado - bankLandRelease;
+  const equityLand = p.valorLote - bankLandRelease;
+
   // Mês 0
-  const f0 = -p.valorLote;
+  const f0 = -equityLand;
   acum += f0;
-  result.push({ mes: 0, fase: 'Compra', custoEquity: -p.valorLote, liberacaoBanco: 0, juros: 0, pmtPos: 0, vendaIRQuit: 0, fluxoLiquido: f0, acumulado: acum });
+  result.push({ mes: 0, fase: 'Compra', custoEquity: -equityLand, liberacaoBanco: bankLandRelease, juros: 0, pmtPos: 0, vendaIRQuit: 0, fluxoLiquido: f0, acumulado: acum });
 
   // Pré-obra
   const preObraMensal = totalPreObraSoftCosts / Math.max(1, p.mesesPreObra);
@@ -138,9 +150,9 @@ function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
 
   // Obra
   const construcaoMensal = custoTotalConstrucao / Math.max(1, p.mesesObra);
-  const libMensal = valorFinanciado / Math.max(1, p.mesesObra);
+  const libMensal = valorFinanciadoObra / Math.max(1, p.mesesObra);
   const hardMensal = totalDuranteObraHard / Math.max(1, p.mesesObra);
-  let saldoObra = 0;
+  let saldoObra = bankLandRelease;
   for (let i = 0; i < p.mesesObra; i++) {
     saldoObra += libMensal;
     const jurosMes = saldoObra * taxaMensal;
@@ -349,14 +361,16 @@ export function gerarAuditChecks(c: CenarioResult, mercado: AnalyseMercado, p: P
 
 export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
   const custoTotalConstrucao = p.areaConstruida * p.custoPorM2;
-  const baseFinanciamento = p.valorLote + custoTotalConstrucao;
+  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const baseFinanciamento = isSC ? custoTotalConstrucao : (p.valorLote + custoTotalConstrucao);
   const valorFinanciado = baseFinanciamento * p.percLTV;
   const taxaMensal = Math.pow(1 + p.taxaAnual, 1 / 12) - 1;
   const pmt = valorFinanciado * taxaMensal / (1 - Math.pow(1 + taxaMensal, -p.prazoMeses));
 
   const totalPreObraSoftCosts = somaPreObra(p);
   const totalDuranteObraHard = somaDuranteObra(p);
-  const jurosObra = calcularJurosObra(valorFinanciado, taxaMensal, p.mesesObra);
+  const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
+  const jurosObra = calcularJurosObra(valorFinanciado, taxaMensal, p.mesesObra, bankLandRelease);
 
   const vgvPorM2 = p.precoMercado * p.areaConstruida;
   const vgvEfetivo = Math.max(p.valorVenda, vgvPorM2);
@@ -371,7 +385,7 @@ export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
   const cenC = calcularCenario(p, 'C', p.mesesPosC, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
 
   const mercado = analisarMercado(p, vgvEfetivo);
-  const cronogramaJuros = gerarCronogramaJuros(valorFinanciado, p.taxaAnual, p.mesesObra);
+  const cronogramaJuros = gerarCronogramaJuros(valorFinanciado, p.taxaAnual, p.mesesObra, bankLandRelease);
 
   const bufferBE = vgvEfetivo > 0 ? (vgvEfetivo - cenB.breakEvenVGV) / vgvEfetivo : 0;
   const score = calcularScore(cenB.roe, cenB.margem, cenB.vpl, bufferBE);
