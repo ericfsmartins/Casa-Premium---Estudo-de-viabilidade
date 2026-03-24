@@ -367,7 +367,8 @@ export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
 
   const totalPreObraSoftCosts = somaPreObra(p);
   const totalDuranteObraHard = somaDuranteObra(p);
-  const jurosObra = calcularJurosObra(valorFinanciado, taxaMensal, p.mesesObra);
+  const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
+  const jurosObra = calcularJurosObra(valorFinanciado, taxaMensal, p.mesesObra, bankLandRelease);
 
   const vgvPorM2 = p.precoMercado * p.areaConstruida;
   const vgvEfetivo = Math.max(p.valorVenda, vgvPorM2);
