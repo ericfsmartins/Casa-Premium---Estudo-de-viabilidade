@@ -127,10 +127,15 @@ function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
   const result: FluxoCaixaMes[] = [];
   let acum = 0;
 
+  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
+  const valorFinanciadoObra = valorFinanciado - bankLandRelease;
+  const equityLand = p.valorLote - bankLandRelease;
+
   // Mês 0
-  const f0 = -p.valorLote;
+  const f0 = -equityLand;
   acum += f0;
-  result.push({ mes: 0, fase: 'Compra', custoEquity: -p.valorLote, liberacaoBanco: 0, juros: 0, pmtPos: 0, vendaIRQuit: 0, fluxoLiquido: f0, acumulado: acum });
+  result.push({ mes: 0, fase: 'Compra', custoEquity: -equityLand, liberacaoBanco: bankLandRelease, juros: 0, pmtPos: 0, vendaIRQuit: 0, fluxoLiquido: f0, acumulado: acum });
 
   // Pré-obra
   const preObraMensal = totalPreObraSoftCosts / Math.max(1, p.mesesPreObra);
@@ -142,9 +147,9 @@ function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
 
   // Obra
   const construcaoMensal = custoTotalConstrucao / Math.max(1, p.mesesObra);
-  const libMensal = valorFinanciado / Math.max(1, p.mesesObra);
+  const libMensal = valorFinanciadoObra / Math.max(1, p.mesesObra);
   const hardMensal = totalDuranteObraHard / Math.max(1, p.mesesObra);
-  let saldoObra = 0;
+  let saldoObra = bankLandRelease;
   for (let i = 0; i < p.mesesObra; i++) {
     saldoObra += libMensal;
     const jurosMes = saldoObra * taxaMensal;
