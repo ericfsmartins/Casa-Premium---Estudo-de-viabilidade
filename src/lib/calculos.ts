@@ -385,7 +385,7 @@ export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
   const cenC = calcularCenario(p, 'C', p.mesesPosC, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
 
   const mercado = analisarMercado(p, vgvEfetivo);
-  const cronogramaJuros = gerarCronogramaJuros(valorFinanciado, p.taxaAnual, p.mesesObra);
+  const cronogramaJuros = gerarCronogramaJuros(valorFinanciado, p.taxaAnual, p.mesesObra, bankLandRelease);
 
   const bufferBE = vgvEfetivo > 0 ? (vgvEfetivo - cenB.breakEvenVGV) / vgvEfetivo : 0;
   const score = calcularScore(cenB.roe, cenB.margem, cenB.vpl, bufferBE);
