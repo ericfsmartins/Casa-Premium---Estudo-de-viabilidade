@@ -10,13 +10,15 @@ export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, m
   return totalJuros;
 }
 
-export function gerarCronogramaJuros(valorFinanciado: number, taxaAnual: number, mesesObra: number): JurosObraMes[] {
+export function gerarCronogramaJuros(valorFinanciado: number, taxaAnual: number, mesesObra: number, saldoInicial = 0): JurosObraMes[] {
   const i = Math.pow(1 + taxaAnual, 1 / 12) - 1;
+  const libTotal = valorFinanciado - saldoInicial;
+  const libMensal = libTotal / Math.max(1, mesesObra);
   return Array.from({ length: mesesObra }, (_, idx) => {
     const mes = idx + 1;
-    const saldo = valorFinanciado * (mes / mesesObra);
+    const saldo = saldoInicial + libMensal * mes;
     const juros = saldo * i;
-    return { mes, liberacao: valorFinanciado / mesesObra, saldo, juros };
+    return { mes, liberacao: libMensal, saldo, juros };
   });
 }
 
