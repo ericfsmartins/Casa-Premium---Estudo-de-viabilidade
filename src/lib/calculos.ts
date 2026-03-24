@@ -1,9 +1,10 @@
 import { ProjetoInputs, CenarioResult, AnalyseMercado, Parecer, AuditCheck, ProjetoCompleto, JurosObraMes, FluxoCaixaMes } from './types';
 
-export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, mesesObra: number): number {
-  let saldo = 0, totalJuros = 0;
+export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, mesesObra: number, saldoInicial = 0): number {
+  let saldo = saldoInicial, totalJuros = 0;
+  const libMensal = (valorFinanciado - saldoInicial) / Math.max(1, mesesObra);
   for (let i = 1; i <= mesesObra; i++) {
-    saldo += valorFinanciado / mesesObra;
+    saldo += libMensal;
     totalJuros += saldo * taxaMensal;
   }
   return totalJuros;
