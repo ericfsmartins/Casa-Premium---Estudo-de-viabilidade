@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ChevronDown, Plus, Trash2, RotateCcw, Save } from 'lucide-react';
-import { ProjetoInputs, Comparavel } from '@/lib/types';
+import { ProjetoInputs, Comparavel, ModalidadeFinanciamento } from '@/lib/types';
 import { toast } from 'sonner';
 
 interface InputsPageProps {
