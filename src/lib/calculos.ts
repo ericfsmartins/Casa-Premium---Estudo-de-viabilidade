@@ -69,8 +69,13 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
   const carregoMensal = p.condominio + p.iptuAnual / 12;
   const fluxos: number[] = [];
 
-  // Mês 0: terreno
-  fluxos.push(-p.valorLote);
+  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  // In T+C mode, bank releases land portion at month 0
+  const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
+  const valorFinanciadoObra = valorFinanciado - bankLandRelease;
+
+  // Mês 0: terreno (equity portion = total - bank release)
+  fluxos.push(-(p.valorLote - bankLandRelease));
 
   // Pré-obra
   const preObraMensal = totalPreObraSoftCosts / Math.max(1, p.mesesPreObra);
@@ -78,10 +83,10 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
     fluxos.push(-preObraMensal - carregoMensal);
   }
 
-  // Obra
+  // Obra — only construction portion released in tranches
   const construcaoMensal = custoTotalConstrucao / Math.max(1, p.mesesObra);
-  const libMensal = valorFinanciado / Math.max(1, p.mesesObra);
-  let saldoObra = 0;
+  const libMensal = valorFinanciadoObra / Math.max(1, p.mesesObra);
+  let saldoObra = bankLandRelease; // bank already released land portion
   const hardMensal = totalDuranteObraHard / Math.max(1, p.mesesObra);
   for (let i = 0; i < p.mesesObra; i++) {
     saldoObra += libMensal;
@@ -95,11 +100,10 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
   }
 
   // Venda no último mês
-  const kParcelas = mesesPos; // parcelas pagas pós-obra
+  const kParcelas = mesesPos;
   const saldoDevedor = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
   const comissaoVal = vgvEfetivo * p.comissao;
 
-  // Calcular custo total para IR
   const carregoTotal = carregoMensal * (p.mesesPreObra + p.mesesObra + mesesPos);
   const custoTotalAll = p.valorLote + custoTotalConstrucao + totalPreObraSoftCosts + totalDuranteObraHard
     + jurosObra + carregoTotal + pmt * mesesPos;
