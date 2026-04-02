@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { ProjetoCompleto } from '@/lib/types';
 import { fmtBRL, fmtPct } from '@/lib/formatters';
-import { Plus, TrendingUp, BarChart3, Target, Award, ArrowUpRight } from 'lucide-react';
+import { Plus, TrendingUp, BarChart3, Target, Award, ArrowUpRight, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface HomePageProps {
@@ -35,18 +36,26 @@ const animClasses = ['animate-in-1', 'animate-in-2', 'animate-in-3', 'animate-in
 
 export default function HomePage({ resultados, onSetActive, onAdd }: HomePageProps) {
   const navigate = useNavigate();
+  const [showModal, setShowModal] = useState(false);
+  const [nomeProjeto, setNomeProjeto] = useState('');
 
   const handleClick = (id: string) => {
     onSetActive(id);
     navigate(`/projeto/${id}`);
   };
 
-  const handleAdd = () => {
-    const nome = prompt('Nome do novo projeto:');
-    if (nome) onAdd(nome);
+  const handleAdd = () => setShowModal(true);
+
+  const confirmarAdd = () => {
+    if (nomeProjeto.trim()) {
+      onAdd(nomeProjeto.trim());
+      setShowModal(false);
+      setNomeProjeto('');
+    }
   };
 
   return (
+    <>
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-end justify-between flex-wrap gap-4 animate-fade">
@@ -143,5 +152,34 @@ export default function HomePage({ resultados, onSetActive, onAdd }: HomePagePro
         })}
       </div>
     </div>
+
+    {/* Modal Novo Projeto */}
+    {showModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+        <div className="relative w-full max-w-sm bg-card border border-border/60 rounded-2xl shadow-2xl p-6 space-y-4 animate-scale">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-lg">Novo Projeto</h2>
+            <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-muted/30 text-muted-foreground transition-colors"><X size={16} /></button>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground font-medium">Nome do projeto</label>
+            <input
+              autoFocus
+              value={nomeProjeto}
+              onChange={e => setNomeProjeto(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmarAdd()}
+              className="input-premium w-full"
+              placeholder="Ex: Casa Alpha — Jardim Europa"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center">Cancelar</button>
+            <button onClick={confirmarAdd} disabled={!nomeProjeto.trim()} className="btn-primary flex-1 justify-center disabled:opacity-40">Criar</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

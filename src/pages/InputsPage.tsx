@@ -119,7 +119,7 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
             className="btn-ghost text-xs">
             <RotateCcw size={14} /> Resetar
           </button>
-          <button onClick={() => { localStorage.setItem('viabilidade_projetos', JSON.stringify([projeto])); toast.success('Projeto salvo!'); }}
+          <button onClick={() => { onUpdate(projeto); toast.success('Projeto salvo!'); }}
             className="btn-primary text-xs !px-4 !py-2">
             <Save size={14} /> Salvar
           </button>

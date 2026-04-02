@@ -1,4 +1,4 @@
-import { ProjetoInputs, CenarioResult, AnalyseMercado, Parecer, AuditCheck, ProjetoCompleto, JurosObraMes, FluxoCaixaMes } from './types';
+import { ProjetoInputs, CenarioResult, AnalyseMercado, Parecer, AuditCheck, ProjetoCompleto, JurosObraMes, FluxoCaixaMes, EstrategiaCompra, IMPACTO_NUM } from './types';
 
 export function calcularJurosObra(valorFinanciado: number, taxaMensal: number, mesesObra: number, saldoInicial = 0): number {
   let saldo = saldoInicial, totalJuros = 0;
@@ -288,7 +288,7 @@ function calcularCenario(
 export function analisarMercado(p: ProjetoInputs, vgvEfetivo: number): AnalyseMercado {
   const comps = p.comparaveis.filter(c => c.area > 0);
   if (comps.length === 0) {
-    return { mediaComps: 0, medianaComps: 0, minComp: 0, maxComp: 0, desvioPreco: 0, alertaMercado: 'Sem comparáveis' };
+    return { mediaComps: 0, medianaComps: 0, minComp: 0, maxComp: 0, desvioPreco: 0, alertaMercado: 'Sem comparáveis', desvioPadrao: 0, scoreLiquidez: 0, alertaLiquidez: 'Sem dados', diasGiroEstimado: 0 };
   }
   const precosPorM2 = comps.map(c => c.preco / c.area);
   precosPorM2.sort((a, b) => a - b);
@@ -296,16 +296,160 @@ export function analisarMercado(p: ProjetoInputs, vgvEfetivo: number): AnalyseMe
   const mediana = precosPorM2.length % 2 === 0
     ? (precosPorM2[precosPorM2.length / 2 - 1] + precosPorM2[precosPorM2.length / 2]) / 2
     : precosPorM2[Math.floor(precosPorM2.length / 2)];
+  // Desvio padrão
+  const desvioPadrao = precosPorM2.length > 1
+    ? Math.sqrt(precosPorM2.reduce((s, v) => s + Math.pow(v - media, 2), 0) / (precosPorM2.length - 1))
+    : 0;
   const modeloPorM2 = p.areaConstruida > 0 ? vgvEfetivo / p.areaConstruida : 0;
   const desvio = mediana > 0 ? (modeloPorM2 - mediana) / mediana : 0;
   const alerta = desvio <= 0.05 ? 'Em linha com mercado'
     : desvio <= 0.15 ? 'Levemente acima do mercado'
     : 'Acima do mercado — revisar preço';
+  // Score de liquidez: quanto mais abaixo da mediana, maior a liquidez
+  const scoreLiquidez = Math.min(100, Math.max(0, Math.round(50 + (-desvio) * 200)));
+  const diasGiroEstimado = desvio <= -0.05 ? 15 : desvio <= 0.05 ? 30 : desvio <= 0.15 ? 60 : 120;
+  const alertaLiquidez = scoreLiquidez >= 70 ? `Alta liquidez — estimativa de venda em ~${diasGiroEstimado} dias`
+    : scoreLiquidez >= 45 ? `Liquidez média — estimativa de venda em ~${diasGiroEstimado} dias`
+    : `Liquidez baixa — estimativa de venda em ~${diasGiroEstimado} dias`;
   return {
     mediaComps: media, medianaComps: mediana,
     minComp: precosPorM2[0], maxComp: precosPorM2[precosPorM2.length - 1],
-    desvioPreco: desvio, alertaMercado: alerta
+    desvioPreco: desvio, alertaMercado: alerta,
+    desvioPadrao, scoreLiquidez, alertaLiquidez, diasGiroEstimado,
   };
+}
+
+export function calcularEstrategiasCompra(p: ProjetoInputs, cenB: CenarioResult, vgvEfetivo: number): EstrategiaCompra[] {
+  const custoTotalConstrucao = p.areaConstruida * p.custoPorM2;
+  const taxaMensal = Math.pow(1 + p.taxaAnual, 1 / 12) - 1;
+
+  function calcROE(valorLote: number, custoExtra = 0): { roe: number; margem: number; lucro: number; equity: number } {
+    const isSC = p.modalidadeFinanciamento === 'so_construcao';
+    const base = isSC ? custoTotalConstrucao : (valorLote + custoTotalConstrucao);
+    const vf = base * p.percLTV;
+    const pmtCalc = vf > 0 ? vf * taxaMensal / (1 - Math.pow(1 + taxaMensal, -p.prazoMeses)) : 0;
+    const comissaoVal = vgvEfetivo * p.comissao;
+    const totalCosto = valorLote + custoTotalConstrucao + custoExtra + pmtCalc * p.mesesPosB;
+    const recLiq = vgvEfetivo - comissaoVal;
+    const lucBruto = recLiq - totalCosto;
+    const irv = Math.max(0, lucBruto) * p.ir;
+    const lucro = lucBruto - irv;
+    const equity = valorLote * (isSC ? 1 : (1 - p.percLTV)) + custoTotalConstrucao * (1 - p.percLTV);
+    const roe = equity > 0 ? lucro / equity : 0;
+    const margem = vgvEfetivo > 0 ? lucro / vgvEfetivo : 0;
+    return { roe, margem, lucro, equity };
+  }
+
+  const desconto = 0.15;
+  const valorComDesconto = p.valorLote * (1 - desconto);
+  const avista = calcROE(valorComDesconto);
+
+  // Parcelamento: 30% entrada + 12x, com custo de juros simples
+  const entradaPct = 0.30;
+  const entrada = p.valorLote * entradaPct;
+  const saldoFin = p.valorLote - entrada;
+  const nParcelas = 12;
+  const jurosMens = taxaMensal;
+  const pmtParc = saldoFin > 0 ? saldoFin * jurosMens / (1 - Math.pow(1 + jurosMens, -nParcelas)) : 0;
+  const custoParc = pmtParc * nParcelas - saldoFin;
+  const parcelamento = calcROE(p.valorLote, custoParc);
+
+  // Permuta: 40% permuta + 60% dinheiro
+  const permutaPct = 0.40;
+  const permutaVal = p.valorLote * permutaPct;
+  const dinheiroVal = p.valorLote * (1 - permutaPct);
+  // Permuta: equity reduzido (não sai dinheiro para permuta)
+  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const baseFinPerm = isSC ? custoTotalConstrucao : (dinheiroVal + custoTotalConstrucao);
+  const vfPerm = baseFinPerm * p.percLTV;
+  const pmtPerm = vfPerm > 0 ? vfPerm * taxaMensal / (1 - Math.pow(1 + taxaMensal, -p.prazoMeses)) : 0;
+  const comissaoPermuta = vgvEfetivo * p.comissao;
+  const totalCostoPerm = dinheiroVal + custoTotalConstrucao + pmtPerm * p.mesesPosB;
+  const recLiqPerm = vgvEfetivo - permutaVal - comissaoPermuta;
+  const lucBrutoPerm = recLiqPerm - (dinheiroVal + custoTotalConstrucao + pmtPerm * p.mesesPosB - dinheiroVal);
+  const lucBrutoPerm2 = recLiqPerm - totalCostoPerm + dinheiroVal;
+  const irvPerm = Math.max(0, lucBrutoPerm2) * p.ir;
+  const lucroPerm = lucBrutoPerm2 - irvPerm;
+  const equityPerm = dinheiroVal * (isSC ? 1 : (1 - p.percLTV)) + custoTotalConstrucao * (1 - p.percLTV);
+  const roePerm = equityPerm > 0 ? lucroPerm / equityPerm : 0;
+  const margemPerm = vgvEfetivo > 0 ? lucroPerm / vgvEfetivo : 0;
+  const equityDeltaPerm = (avista.equity || parcelamento.equity) - equityPerm;
+
+  const metaROE = 1.0;
+  const metaMargem = 0.25;
+  const avistaAtende = avista.roe >= metaROE && avista.margem >= metaMargem;
+  const parcAtende = parcelamento.roe >= metaROE && parcelamento.margem >= metaMargem;
+  const permAtende = roePerm >= metaROE && margemPerm >= metaMargem;
+
+  // Recomendar: melhor ROE com menos equity
+  const melhor = avista.roe >= parcelamento.roe && avista.roe >= roePerm ? 'avista'
+    : parcelamento.roe >= roePerm ? 'parcelamento' : 'permuta';
+
+  return [
+    {
+      tipo: 'avista',
+      titulo: 'À Vista Agressiva',
+      subtitulo: `Proposta com ${(desconto * 100).toFixed(0)}% de desconto para pagamento à vista`,
+      valorTotal: valorComDesconto,
+      entrada: valorComDesconto,
+      saldoFinanciado: 0,
+      parcelas: 0,
+      valorParcela: 0,
+      custoTotal: valorComDesconto,
+      permutaValor: 0,
+      dinheiroValor: valorComDesconto,
+      roe: avista.roe,
+      margem: avista.margem,
+      lucroLiquido: avista.lucro,
+      equity: avista.equity,
+      equityDelta: 0,
+      desconto: desconto,
+      recomendado: melhor === 'avista',
+      atendemMetas: avistaAtende,
+    },
+    {
+      tipo: 'parcelamento',
+      titulo: 'Entrada + Parcelamento',
+      subtitulo: `${(entradaPct * 100).toFixed(0)}% de entrada e saldo em ${nParcelas}x`,
+      valorTotal: p.valorLote,
+      entrada: entrada,
+      saldoFinanciado: saldoFin,
+      parcelas: nParcelas,
+      valorParcela: pmtParc,
+      custoTotal: entrada + pmtParc * nParcelas,
+      permutaValor: 0,
+      dinheiroValor: p.valorLote,
+      roe: parcelamento.roe,
+      margem: parcelamento.margem,
+      lucroLiquido: parcelamento.lucro,
+      equity: parcelamento.equity,
+      equityDelta: parcelamento.equity - avista.equity,
+      desconto: 0,
+      recomendado: melhor === 'parcelamento',
+      atendemMetas: parcAtende,
+    },
+    {
+      tipo: 'permuta',
+      titulo: 'Permuta Parcial',
+      subtitulo: `${(permutaPct * 100).toFixed(0)}% do valor em permuta + ${((1 - permutaPct) * 100).toFixed(0)}% em dinheiro`,
+      valorTotal: p.valorLote,
+      entrada: dinheiroVal,
+      saldoFinanciado: 0,
+      parcelas: 0,
+      valorParcela: 0,
+      custoTotal: dinheiroVal,
+      permutaValor: permutaVal,
+      dinheiroValor: dinheiroVal,
+      roe: roePerm,
+      margem: margemPerm,
+      lucroLiquido: lucroPerm,
+      equity: equityPerm,
+      equityDelta: equityPerm - avista.equity,
+      desconto: 0,
+      recomendado: melhor === 'permuta',
+      atendemMetas: permAtende,
+    },
+  ];
 }
 
 export function calcularScore(roe: number, margem: number, vpl: number, bufferBreakeven: number): number {
@@ -392,9 +536,12 @@ export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
   const parecer = gerarParecer(score, cenB.margem, cenB.tir, p.tma, cenB.roe, bufferBE);
   const auditChecks = gerarAuditChecks(cenB, mercado, p, vgvEfetivo);
 
+  const estrategiasCompra = calcularEstrategiasCompra(p, cenB, vgvEfetivo);
+
   return {
     inputs: p, cenarios: { A: cenA, B: cenB, C: cenC },
     mercado, parecer, auditChecks, cronogramaJuros,
-    totalPreObra, totalDuranteObra, custoTotalConstrucao, valorFinanciado, jurosObra, pmt
+    totalPreObra, totalDuranteObra, custoTotalConstrucao, valorFinanciado, jurosObra, pmt,
+    estrategiasCompra,
   };
 }

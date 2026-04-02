@@ -12,22 +12,37 @@ import { useProjetos } from "@/hooks/useProjetos";
 
 const queryClient = new QueryClient();
 
-function ProjetoRoute({ projetos, updateProjeto, resetProjeto, setActiveId }: {
-  projetos: ReturnType<typeof useProjetos>['projetos'];
-  updateProjeto: ReturnType<typeof useProjetos>['updateProjeto'];
-  resetProjeto: ReturnType<typeof useProjetos>['resetProjeto'];
-  setActiveId: ReturnType<typeof useProjetos>['setActiveId'];
-}) {
+function ProjetoRoute({ ctx }: { ctx: ReturnType<typeof useProjetos> }) {
   const { id } = useParams<{ id: string }>();
+  const { projetos, updateProjeto, resetProjeto, setActiveId,
+    addRisco, updateRisco, removeRisco,
+    updateChecklistItem, addChecklistItem, removeChecklistItem,
+    updateTerreno, addDecisao } = ctx;
+
   const projeto = projetos.find(p => p.id === id);
   if (!projeto) return <Navigate to="/" replace />;
   setActiveId(projeto.id);
-  return <ProjetoDetailPage projeto={projeto} onUpdate={updateProjeto} onReset={resetProjeto} />;
+
+  return (
+    <ProjetoDetailPage
+      projeto={projeto}
+      onUpdate={updateProjeto}
+      onReset={resetProjeto}
+      onAddRisco={addRisco}
+      onUpdateRisco={updateRisco}
+      onRemoveRisco={removeRisco}
+      onUpdateChecklistItem={updateChecklistItem}
+      onAddChecklistItem={addChecklistItem}
+      onRemoveChecklistItem={removeChecklistItem}
+      onUpdateTerreno={updateTerreno}
+      onAddDecisao={addDecisao}
+    />
+  );
 }
 
 function AppContent() {
   const ctx = useProjetos();
-  const { projetos, resultadoAtivo, todosResultados, updateProjeto, addProjeto, removeProjeto, resetProjeto, clearAll, setActiveId } = ctx;
+  const { resultadoAtivo, todosResultados, addProjeto, removeProjeto, clearAll, setActiveId } = ctx;
 
   return (
     <>
@@ -35,9 +50,7 @@ function AppContent() {
       <main className="pt-20 md:pt-20 pb-10 px-4 md:px-6 container mx-auto max-w-7xl">
         <Routes>
           <Route path="/" element={<HomePage resultados={todosResultados} onSetActive={setActiveId} onAdd={(nome) => { addProjeto(nome); }} />} />
-          <Route path="/projeto/:id" element={
-            <ProjetoRoute projetos={projetos} updateProjeto={updateProjeto} resetProjeto={resetProjeto} setActiveId={setActiveId} />
-          } />
+          <Route path="/projeto/:id" element={<ProjetoRoute ctx={ctx} />} />
           <Route path="/comparativo" element={<ComparativoPage resultados={todosResultados} onSetActive={setActiveId} onRemove={removeProjeto} onAdd={addProjeto} onClearAll={clearAll} />} />
           <Route path="/ajuda" element={<AjudaPage />} />
           <Route path="*" element={<NotFound />} />

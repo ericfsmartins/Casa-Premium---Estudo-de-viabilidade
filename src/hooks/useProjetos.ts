@@ -1,21 +1,37 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { ProjetoInputs, ProjetoCompleto } from '@/lib/types';
+import { useState, useCallback, useMemo } from 'react';
+import { ProjetoInputs, ProjetoCompleto, RiscoItem, ChecklistFase, ChecklistItem, DecisaoComite, TerrenoInfo, IMPACTO_NUM } from '@/lib/types';
 import { calcularProjetoCompleto } from '@/lib/calculos';
-import { criarProjetoPadrao } from '@/lib/defaults';
+import { criarProjetoPadrao, criarChecklistPadrao, criarTerrenoPadrao } from '@/lib/defaults';
+import { v4Fallback } from '@/lib/utils-id';
 
-const STORAGE_KEY = 'viabilidade_projetos';
+const STORAGE_KEY = 'viabilidade_projetos_v2';
 const ACTIVE_KEY = 'viabilidade_ativo';
+
+function ensureModulos(p: ProjetoInputs): ProjetoInputs {
+  return {
+    ...p,
+    modalidadeFinanciamento: p.modalidadeFinanciamento || 'terreno_construcao',
+    terreno: p.terreno || criarTerrenoPadrao(),
+    riscos: p.riscos || [],
+    checklist: p.checklist || criarChecklistPadrao(),
+    decisoes: p.decisoes || [],
+    mercadoTendencia: p.mercadoTendencia || 'estavel',
+    mercadoPerfil: p.mercadoPerfil || 'familia',
+  };
+}
 
 function loadProjetos(): ProjetoInputs[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (data) {
       const parsed = JSON.parse(data) as ProjetoInputs[];
-      // Backward compat: add modalidadeFinanciamento if missing
-      return parsed.map(p => ({
-        ...p,
-        modalidadeFinanciamento: p.modalidadeFinanciamento || 'terreno_construcao',
-      }));
+      return parsed.map(ensureModulos);
+    }
+    // Try legacy key
+    const legacy = localStorage.getItem('viabilidade_projetos');
+    if (legacy) {
+      const parsed = JSON.parse(legacy) as ProjetoInputs[];
+      return parsed.map(ensureModulos);
     }
   } catch { /* ignore */ }
   return [criarProjetoPadrao()];
@@ -23,6 +39,10 @@ function loadProjetos(): ProjetoInputs[] {
 
 function loadActiveId(): string | null {
   return localStorage.getItem(ACTIVE_KEY);
+}
+
+function saveProjetos(projetos: ProjetoInputs[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(projetos));
 }
 
 export function useProjetos() {
@@ -39,15 +59,13 @@ export function useProjetos() {
   }, []);
 
   const projetoAtivo = useMemo(() => projetos.find(p => p.id === activeId) || projetos[0], [projetos, activeId]);
-
   const resultadoAtivo: ProjetoCompleto = useMemo(() => calcularProjetoCompleto(projetoAtivo), [projetoAtivo]);
-
   const todosResultados: ProjetoCompleto[] = useMemo(() => projetos.map(calcularProjetoCompleto), [projetos]);
 
   const updateProjeto = useCallback((updated: ProjetoInputs) => {
     setProjetos(prev => {
       const next = prev.map(p => p.id === updated.id ? updated : p);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      saveProjetos(next);
       return next;
     });
   }, []);
@@ -56,7 +74,7 @@ export function useProjetos() {
     const novo = criarProjetoPadrao(nome);
     setProjetos(prev => {
       const next = [...prev, novo];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      saveProjetos(next);
       return next;
     });
     setActiveId(novo.id);
@@ -67,7 +85,7 @@ export function useProjetos() {
     setProjetos(prev => {
       const next = prev.filter(p => p.id !== id);
       if (next.length === 0) next.push(criarProjetoPadrao());
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      saveProjetos(next);
       if (activeId === id) setActiveId(next[0].id);
       return next;
     });
@@ -79,7 +97,7 @@ export function useProjetos() {
       const reset = criarProjetoPadrao(existing?.nome || 'Novo Projeto');
       reset.id = id;
       const next = prev.map(p => p.id === id ? reset : p);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      saveProjetos(next);
       return next;
     });
   }, []);
@@ -88,11 +106,116 @@ export function useProjetos() {
     const novo = criarProjetoPadrao();
     setProjetos([novo]);
     setActiveId(novo.id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([novo]));
+    saveProjetos([novo]);
   }, [setActiveId]);
+
+  // ── Riscos ──────────────────────────────────────────────────
+  const addRisco = useCallback((projetoId: string, risco: Omit<RiscoItem, 'id' | 'score'>) => {
+    setProjetos(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projetoId) return p;
+        const impNum = IMPACTO_NUM[risco.impacto];
+        const score = risco.probabilidade * impNum;
+        const newRisco: RiscoItem = { ...risco, id: v4Fallback(), score };
+        return { ...p, riscos: [...(p.riscos || []), newRisco] };
+      });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
+
+  const updateRisco = useCallback((projetoId: string, risco: RiscoItem) => {
+    setProjetos(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projetoId) return p;
+        const impNum = IMPACTO_NUM[risco.impacto];
+        const updated = { ...risco, score: risco.probabilidade * impNum };
+        return { ...p, riscos: (p.riscos || []).map(r => r.id === risco.id ? updated : r) };
+      });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
+
+  const removeRisco = useCallback((projetoId: string, riscoId: string) => {
+    setProjetos(prev => {
+      const next = prev.map(p => p.id !== projetoId ? p : { ...p, riscos: (p.riscos || []).filter(r => r.id !== riscoId) });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
+
+  // ── Checklist ───────────────────────────────────────────────
+  const updateChecklistItem = useCallback((projetoId: string, faseId: string, item: ChecklistItem) => {
+    setProjetos(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projetoId) return p;
+        const fases = (p.checklist || []).map(f =>
+          f.id !== faseId ? f : { ...f, itens: f.itens.map(it => it.id === item.id ? item : it) }
+        );
+        return { ...p, checklist: fases };
+      });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
+
+  const addChecklistItem = useCallback((projetoId: string, faseId: string, texto: string) => {
+    setProjetos(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projetoId) return p;
+        const newItem: ChecklistItem = { id: v4Fallback(), texto, status: 'pendente', responsavel: '', prazo: '', nota: '' };
+        const fases = (p.checklist || []).map(f =>
+          f.id !== faseId ? f : { ...f, itens: [...f.itens, newItem] }
+        );
+        return { ...p, checklist: fases };
+      });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
+
+  const removeChecklistItem = useCallback((projetoId: string, faseId: string, itemId: string) => {
+    setProjetos(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projetoId) return p;
+        const fases = (p.checklist || []).map(f =>
+          f.id !== faseId ? f : { ...f, itens: f.itens.filter(it => it.id !== itemId) }
+        );
+        return { ...p, checklist: fases };
+      });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
+
+  // ── Terreno ─────────────────────────────────────────────────
+  const updateTerreno = useCallback((projetoId: string, terreno: TerrenoInfo) => {
+    setProjetos(prev => {
+      const next = prev.map(p => p.id !== projetoId ? p : { ...p, terreno });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
+
+  // ── Comitê ──────────────────────────────────────────────────
+  const addDecisao = useCallback((projetoId: string, decisao: Omit<DecisaoComite, 'id' | 'dataDecisao'>) => {
+    setProjetos(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projetoId) return p;
+        const nova: DecisaoComite = { ...decisao, id: v4Fallback(), dataDecisao: new Date().toISOString() };
+        return { ...p, decisoes: [...(p.decisoes || []), nova] };
+      });
+      saveProjetos(next);
+      return next;
+    });
+  }, []);
 
   return {
     projetos, projetoAtivo, resultadoAtivo, todosResultados,
-    activeId, setActiveId, updateProjeto, addProjeto, removeProjeto, resetProjeto, clearAll
+    activeId, setActiveId, updateProjeto, addProjeto, removeProjeto, resetProjeto, clearAll,
+    addRisco, updateRisco, removeRisco,
+    updateChecklistItem, addChecklistItem, removeChecklistItem,
+    updateTerreno, addDecisao,
   };
 }

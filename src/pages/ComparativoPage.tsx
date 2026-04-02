@@ -3,6 +3,7 @@ import { fmtBRL, fmtPct } from '@/lib/formatters';
 import { Trash2, Eye, Edit, Plus, Trophy, ArrowUpRight } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 
 const COLORS = ['hsl(43, 52%, 54%)', 'hsl(217, 92%, 68%)', 'hsl(160, 64%, 52%)', 'hsl(0, 72%, 71%)'];
 
@@ -10,13 +11,21 @@ interface ComparativoProps {
   resultados: ProjetoCompleto[];
   onSetActive: (id: string) => void;
   onRemove: (id: string) => void;
-  onAdd: (nome: string) => void;
+  onAdd: (nome: string) => string | undefined;
   onClearAll: () => void;
 }
 
 export default function ComparativoPage({ resultados, onSetActive, onRemove, onAdd, onClearAll }: ComparativoProps) {
   const navigate = useNavigate();
+  const [nomeNovo, setNomeNovo] = useState('');  
   const sorted = [...resultados].sort((a, b) => b.parecer.score - a.parecer.score);
+
+  const handleAdd = () => {
+    if (nomeNovo.trim()) {
+      onAdd(nomeNovo.trim());
+      setNomeNovo('');
+    }
+  };
 
   const radarData = (() => {
     const top4 = sorted.slice(0, 4);
@@ -48,14 +57,19 @@ export default function ComparativoPage({ resultados, onSetActive, onRemove, onA
           <h1 className="font-display text-3xl text-foreground tracking-tight">Comparativo de Projetos</h1>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { const nome = prompt('Nome do novo projeto:'); if (nome) { onAdd(nome); navigate('/novo'); } }}
-            className="btn-primary text-xs !px-4 !py-2">
-            <Plus size={14} /> Novo Projeto
+        <div className="flex gap-2 items-center">
+          <input value={nomeNovo} onChange={e => setNomeNovo(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            className="input-premium text-xs !px-3 !py-2 w-48" placeholder="Nome do projeto..." />
+          <button onClick={handleAdd} disabled={!nomeNovo.trim()}
+            className="btn-primary text-xs !px-4 !py-2 disabled:opacity-40">
+            <Plus size={14} /> Novo
           </button>
           <button onClick={onClearAll}
             className="btn-ghost text-xs text-destructive hover:text-destructive">
             Limpar todos
           </button>
+        </div>
         </div>
       </div>
 
