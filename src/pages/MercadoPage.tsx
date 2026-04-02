@@ -95,7 +95,7 @@ export default function MercadoPage({ projeto, resultado, onUpdateTendencia, onU
           <h2 className="font-display text-base mb-4 flex items-center gap-2">
             <Activity size={15} className="text-primary" /> Score de Liquidez
           </h2>
-          <div className="flex items-center gap-5">
+          <div className="flex items-start gap-5 mb-4">
             <div className="relative shrink-0">
               <svg width="110" height="110" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(222,18%,15%)" strokeWidth="5" />
@@ -119,6 +119,27 @@ export default function MercadoPage({ projeto, resultado, onUpdateTendencia, onU
               <p className="text-[11px] text-muted-foreground">Range: {fmtBRL(mercado.minComp)} – {fmtBRL(mercado.maxComp)}/m²</p>
             </div>
           </div>
+          {mercado.scoreFactors.length > 0 && (
+            <div className="space-y-2 border-t border-border/30 pt-3">
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-2">Composição do score</p>
+              {mercado.scoreFactors.map((f, i) => {
+                const pct = f.maxPontos > 0 ? f.pontos / f.maxPontos : 0;
+                const barColor = pct >= 0.7 ? 'bg-success' : pct >= 0.4 ? 'bg-warning' : 'bg-destructive';
+                return (
+                  <div key={i} className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-foreground font-medium">{f.label}</span>
+                      <span className="font-mono text-muted-foreground">{f.pontos}/{f.maxPontos}pts</span>
+                    </div>
+                    <div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct * 100}%` }} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/70">{f.descricao}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Tendência e Perfil */}

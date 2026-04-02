@@ -67,12 +67,12 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
   custoTotalConstrucao: number, valorFinanciado: number,
   totalPreObraSoftCosts: number, totalDuranteObraHard: number,
   taxaMensal: number, pmt: number, jurosObra: number,
-  vgvEfetivo: number): number[] {
+  vgvEfetivo: number, mesesCarencia: number): number[] {
 
   const carregoMensal = p.condominio + p.iptuAnual / 12;
   const fluxos: number[] = [];
 
-  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const isSC = p.modalidadeFinanciamento === 'so_construcao' || p.modalidadeFinanciamento === 'apoio_producao';
   // In T+C mode, bank releases land portion at month 0
   const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
   const valorFinanciadoObra = valorFinanciado - bankLandRelease;
@@ -97,19 +97,29 @@ function construirFluxos(p: ProjetoInputs, mesesPos: number,
     fluxos.push(-construcaoMensal + libMensal - jurosMes - carregoMensal - hardMensal);
   }
 
-  // Pós-obra
+  // Pós-obra (incl. período de carência se aplicável)
+  const mesesSoJuros = Math.min(mesesPos, mesesCarencia);
+  const mesesComPmt = Math.max(0, mesesPos - mesesCarencia);
   for (let i = 0; i < mesesPos; i++) {
-    fluxos.push(-pmt - carregoMensal);
+    if (i < mesesCarencia) {
+      fluxos.push(-(valorFinanciado * taxaMensal) - carregoMensal);
+    } else {
+      fluxos.push(-pmt - carregoMensal);
+    }
   }
 
   // Venda no último mês
-  const kParcelas = mesesPos;
-  const saldoDevedor = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
+  const prazoEfetivo = Math.max(1, p.prazoMeses - mesesCarencia);
+  const kAmort = mesesComPmt;
+  const saldoDevedor = kAmort > 0
+    ? calcSaldoDevedor(valorFinanciado, p.taxaAnual, prazoEfetivo, kAmort)
+    : valorFinanciado;
   const comissaoVal = vgvEfetivo * p.comissao;
 
+  const totalPagamentosPos = pmt * mesesComPmt + valorFinanciado * taxaMensal * mesesSoJuros;
   const carregoTotal = carregoMensal * (p.mesesPreObra + p.mesesObra + mesesPos);
   const custoTotalAll = p.valorLote + custoTotalConstrucao + totalPreObraSoftCosts + totalDuranteObraHard
-    + jurosObra + carregoTotal + pmt * mesesPos;
+    + jurosObra + carregoTotal + totalPagamentosPos;
   const recLiq = vgvEfetivo - comissaoVal;
   const lucroBruto = recLiq - custoTotalAll;
   const irVal = Math.max(0, lucroBruto) * p.ir;
@@ -124,13 +134,13 @@ function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
   custoTotalConstrucao: number, valorFinanciado: number,
   totalPreObraSoftCosts: number, totalDuranteObraHard: number,
   taxaMensal: number, pmt: number, jurosObra: number,
-  vgvEfetivo: number): FluxoCaixaMes[] {
+  vgvEfetivo: number, mesesCarencia: number): FluxoCaixaMes[] {
 
   const carregoMensal = p.condominio + p.iptuAnual / 12;
   const result: FluxoCaixaMes[] = [];
   let acum = 0;
 
-  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const isSC = p.modalidadeFinanciamento === 'so_construcao' || p.modalidadeFinanciamento === 'apoio_producao';
   const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
   const valorFinanciadoObra = valorFinanciado - bankLandRelease;
   const equityLand = p.valorLote - bankLandRelease;
@@ -166,13 +176,19 @@ function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
     });
   }
 
-  // Pós-obra
-  const kParcelas = mesesPos;
-  const saldoDevedor = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
+  // Pós-obra (incl. período de carência se aplicável)
+  const mesesSoJuros = Math.min(mesesPos, mesesCarencia);
+  const mesesComPmt = Math.max(0, mesesPos - mesesCarencia);
+  const prazoEfetivo = Math.max(1, p.prazoMeses - mesesCarencia);
+  const kAmort = mesesComPmt;
+  const saldoDevedor = kAmort > 0
+    ? calcSaldoDevedor(valorFinanciado, p.taxaAnual, prazoEfetivo, kAmort)
+    : valorFinanciado;
   const comissaoVal = vgvEfetivo * p.comissao;
+  const totalPagamentosPos = pmt * mesesComPmt + valorFinanciado * taxaMensal * mesesSoJuros;
   const carregoTotal = carregoMensal * (p.mesesPreObra + p.mesesObra + mesesPos);
   const custoTotalAll = p.valorLote + custoTotalConstrucao + totalPreObraSoftCosts + totalDuranteObraHard
-    + jurosObra + carregoTotal + pmt * mesesPos;
+    + jurosObra + carregoTotal + totalPagamentosPos;
   const recLiq = vgvEfetivo - comissaoVal;
   const lucroBruto = recLiq - custoTotalAll;
   const irVal = Math.max(0, lucroBruto) * p.ir;
@@ -181,12 +197,15 @@ function construirFluxoDetalhado(p: ProjetoInputs, mesesPos: number,
   for (let i = 0; i < mesesPos; i++) {
     const mesNum = p.mesesPreObra + p.mesesObra + i + 1;
     const isLast = i === mesesPos - 1;
-    const fliq = -pmt - carregoMensal + (isLast ? vendaNet : 0);
+    const isCarenciaMonth = i < mesesCarencia;
+    const jurosMesCarencia = isCarenciaMonth ? valorFinanciado * taxaMensal : 0;
+    const fliq = (isCarenciaMonth ? -jurosMesCarencia : -pmt) - carregoMensal + (isLast ? vendaNet : 0);
     acum += fliq;
     result.push({
-      mes: mesNum, fase: 'Pós-Obra',
-      custoEquity: -carregoMensal, liberacaoBanco: 0, juros: 0,
-      pmtPos: -pmt, vendaIRQuit: isLast ? vendaNet : 0,
+      mes: mesNum, fase: isCarenciaMonth ? 'Carência' : 'Pós-Obra',
+      custoEquity: -carregoMensal, liberacaoBanco: 0,
+      juros: isCarenciaMonth ? -jurosMesCarencia : 0,
+      pmtPos: isCarenciaMonth ? 0 : -pmt, vendaIRQuit: isLast ? vendaNet : 0,
       fluxoLiquido: fliq, acumulado: acum
     });
   }
@@ -198,13 +217,16 @@ function calcularCenario(
   p: ProjetoInputs, cenarioLabel: 'A' | 'B' | 'C', mesesPos: number,
   custoTotalConstrucao: number, valorFinanciado: number,
   totalPreObraSoftCosts: number, totalDuranteObraHard: number,
-  taxaMensal: number, pmt: number, jurosObra: number, vgvEfetivo: number
+  taxaMensal: number, pmt: number, jurosObra: number, vgvEfetivo: number,
+  mesesCarencia: number
 ): CenarioResult {
   const carregoMensal = p.condominio + p.iptuAnual / 12;
   const carregoPre = carregoMensal * p.mesesPreObra;
   const carregoDuranteObra = carregoMensal * p.mesesObra;
   const carregoPos = carregoMensal * mesesPos;
-  const prestacoesPagas = pmt * mesesPos;
+  const mesesSoJuros = Math.min(mesesPos, mesesCarencia);
+  const mesesComPmt = Math.max(0, mesesPos - mesesCarencia);
+  const prestacoesPagas = pmt * mesesComPmt + valorFinanciado * taxaMensal * mesesSoJuros;
   const totalPos = carregoPos + prestacoesPagas;
 
   const totalPreObra = totalPreObraSoftCosts + carregoPre;
@@ -220,7 +242,7 @@ function calcularCenario(
 
   // Build cash flows
   const fluxosCaixa = construirFluxos(p, mesesPos, custoTotalConstrucao, valorFinanciado,
-    totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
+    totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo, mesesCarencia);
 
   // Exposição = pico negativo do fluxo acumulado (equity invested)
   // No mês da venda, o investidor paga PMT+carrego ANTES de receber a venda,
@@ -246,8 +268,11 @@ function calcularCenario(
   const margem = vgvEfetivo > 0 ? lucroLiquido / vgvEfetivo : 0;
   const duracaoTotal = p.mesesPreObra + p.mesesObra + mesesPos;
 
-  const kParcelas = mesesPos;
-  const saldoNaVenda = calcSaldoDevedor(valorFinanciado, p.taxaAnual, p.prazoMeses, kParcelas);
+  const prazoEfetivoCen = Math.max(1, p.prazoMeses - mesesCarencia);
+  const kAmortCen = Math.max(0, mesesPos - mesesCarencia);
+  const saldoNaVenda = kAmortCen > 0
+    ? calcSaldoDevedor(valorFinanciado, p.taxaAnual, prazoEfetivoCen, kAmortCen)
+    : valorFinanciado;
   const moic = exposicaoMaxima > 0 ? (exposicaoMaxima + lucroLiquido) / exposicaoMaxima : 0;
 
   const tir = calcularTIR(fluxosCaixa);
@@ -275,7 +300,7 @@ function calcularCenario(
 
   // Fluxo detalhado
   const fluxoDetalhado = construirFluxoDetalhado(p, mesesPos, custoTotalConstrucao, valorFinanciado,
-    totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
+    totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo, mesesCarencia);
 
   return {
     cenario: cenarioLabel, mesesPos, lucroLiquido, lucroBruto, irValor, custoTotal,
@@ -288,7 +313,7 @@ function calcularCenario(
 export function analisarMercado(p: ProjetoInputs, vgvEfetivo: number): AnalyseMercado {
   const comps = p.comparaveis.filter(c => c.area > 0);
   if (comps.length === 0) {
-    return { mediaComps: 0, medianaComps: 0, minComp: 0, maxComp: 0, desvioPreco: 0, alertaMercado: 'Sem comparáveis', desvioPadrao: 0, scoreLiquidez: 0, alertaLiquidez: 'Sem dados', diasGiroEstimado: 0 };
+    return { mediaComps: 0, medianaComps: 0, minComp: 0, maxComp: 0, desvioPreco: 0, alertaMercado: 'Sem comparáveis', desvioPadrao: 0, scoreLiquidez: 0, alertaLiquidez: 'Sem dados', diasGiroEstimado: 0, scoreFactors: [] };
   }
   const precosPorM2 = comps.map(c => c.preco / c.area);
   precosPorM2.sort((a, b) => a - b);
@@ -305,17 +330,57 @@ export function analisarMercado(p: ProjetoInputs, vgvEfetivo: number): AnalyseMe
   const alerta = desvio <= 0.05 ? 'Em linha com mercado'
     : desvio <= 0.15 ? 'Levemente acima do mercado'
     : 'Acima do mercado — revisar preço';
-  // Score de liquidez: quanto mais abaixo da mediana, maior a liquidez
-  const scoreLiquidez = Math.min(100, Math.max(0, Math.round(50 + (-desvio) * 200)));
-  const diasGiroEstimado = desvio <= -0.05 ? 15 : desvio <= 0.05 ? 30 : desvio <= 0.15 ? 60 : 120;
+  // Score de liquidez multifatorial
+  const numComps = comps.length;
+  const cv = mediana > 0 ? desvioPadrao / mediana : 0;
+
+  // 1. Posicionamento de preço (40 pts)
+  const ptsPos = desvio <= -0.10 ? 40 : desvio <= 0.05 ? 30 : desvio <= 0.15 ? 15 : 5;
+  // 2. Volume de comparáveis (20 pts)
+  const ptsVol = numComps >= 5 ? 20 : numComps >= 3 ? 14 : numComps >= 2 ? 8 : 4;
+  // 3. Homogeneidade de preços — CV baixo = mercado mais previsível (20 pts)
+  const ptsDisp = cv <= 0.05 ? 20 : cv <= 0.15 ? 14 : cv <= 0.25 ? 8 : 3;
+  // 4. Tendência de mercado (20 pts)
+  const ptsTend = p.mercadoTendencia === 'subindo' ? 20 : p.mercadoTendencia === 'caindo' ? 4 : 12;
+
+  const scoreLiquidez = Math.min(100, ptsPos + ptsVol + ptsDisp + ptsTend);
+  const diasGiroEstimado = scoreLiquidez >= 70 ? 15 : scoreLiquidez >= 45 ? 30 : 60;
   const alertaLiquidez = scoreLiquidez >= 70 ? `Alta liquidez — estimativa de venda em ~${diasGiroEstimado} dias`
     : scoreLiquidez >= 45 ? `Liquidez média — estimativa de venda em ~${diasGiroEstimado} dias`
     : `Liquidez baixa — estimativa de venda em ~${diasGiroEstimado} dias`;
+
+  const scoreFactors = [
+    {
+      label: 'Posicionamento de preço',
+      descricao: desvio <= -0.05 ? 'Abaixo do mercado — alta demanda' : desvio <= 0.05 ? 'Em linha com o mercado' : desvio <= 0.15 ? 'Levemente acima da mediana' : 'Acima do mercado',
+      pontos: ptsPos,
+      maxPontos: 40,
+    },
+    {
+      label: 'Volume de comparáveis',
+      descricao: `${numComps} comparável(is) — ${numComps >= 5 ? 'base ampla' : numComps >= 3 ? 'base adequada' : 'base limitada'}`,
+      pontos: ptsVol,
+      maxPontos: 20,
+    },
+    {
+      label: 'Homogeneidade de preços',
+      descricao: cv <= 0.15 ? `CV ${(cv * 100).toFixed(1)}% — mercado homogêneo` : `CV ${(cv * 100).toFixed(1)}% — alta dispersão`,
+      pontos: ptsDisp,
+      maxPontos: 20,
+    },
+    {
+      label: 'Tendência de mercado',
+      descricao: p.mercadoTendencia === 'subindo' ? 'Subindo — demanda aquecida' : p.mercadoTendencia === 'caindo' ? 'Caindo — menor liquidez' : 'Estável — mercado equilibrado',
+      pontos: ptsTend,
+      maxPontos: 20,
+    },
+  ];
+
   return {
     mediaComps: media, medianaComps: mediana,
     minComp: precosPorM2[0], maxComp: precosPorM2[precosPorM2.length - 1],
     desvioPreco: desvio, alertaMercado: alerta,
-    desvioPadrao, scoreLiquidez, alertaLiquidez, diasGiroEstimado,
+    desvioPadrao, scoreLiquidez, alertaLiquidez, diasGiroEstimado, scoreFactors,
   };
 }
 
@@ -324,10 +389,12 @@ export function calcularEstrategiasCompra(p: ProjetoInputs, cenB: CenarioResult,
   const taxaMensal = Math.pow(1 + p.taxaAnual, 1 / 12) - 1;
 
   function calcROE(valorLote: number, custoExtra = 0): { roe: number; margem: number; lucro: number; equity: number } {
-    const isSC = p.modalidadeFinanciamento === 'so_construcao';
+    const isSC = p.modalidadeFinanciamento === 'so_construcao' || p.modalidadeFinanciamento === 'apoio_producao';
     const base = isSC ? custoTotalConstrucao : (valorLote + custoTotalConstrucao);
     const vf = base * p.percLTV;
-    const pmtCalc = vf > 0 ? vf * taxaMensal / (1 - Math.pow(1 + taxaMensal, -p.prazoMeses)) : 0;
+    const carenciaMeses = (p.modalidadeFinanciamento === 'apoio_producao' || p.modalidadeFinanciamento === 'plano_empresario') ? (p.mesesCarencia || 0) : 0;
+    const prazoEfet = Math.max(1, p.prazoMeses - carenciaMeses);
+    const pmtCalc = vf > 0 ? vf * taxaMensal / (1 - Math.pow(1 + taxaMensal, -prazoEfet)) : 0;
     const comissaoVal = vgvEfetivo * p.comissao;
     const totalCosto = valorLote + custoTotalConstrucao + custoExtra + pmtCalc * p.mesesPosB;
     const recLiq = vgvEfetivo - comissaoVal;
@@ -359,10 +426,12 @@ export function calcularEstrategiasCompra(p: ProjetoInputs, cenB: CenarioResult,
   const permutaVal = p.valorLote * permutaPct;
   const dinheiroVal = p.valorLote * (1 - permutaPct);
   // Permuta: equity reduzido (não sai dinheiro para permuta)
-  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const isSC = p.modalidadeFinanciamento === 'so_construcao' || p.modalidadeFinanciamento === 'apoio_producao';
   const baseFinPerm = isSC ? custoTotalConstrucao : (dinheiroVal + custoTotalConstrucao);
   const vfPerm = baseFinPerm * p.percLTV;
-  const pmtPerm = vfPerm > 0 ? vfPerm * taxaMensal / (1 - Math.pow(1 + taxaMensal, -p.prazoMeses)) : 0;
+  const carenciaPerm = (p.modalidadeFinanciamento === 'apoio_producao' || p.modalidadeFinanciamento === 'plano_empresario') ? (p.mesesCarencia || 0) : 0;
+  const prazoEfetPerm = Math.max(1, p.prazoMeses - carenciaPerm);
+  const pmtPerm = vfPerm > 0 ? vfPerm * taxaMensal / (1 - Math.pow(1 + taxaMensal, -prazoEfetPerm)) : 0;
   const comissaoPermuta = vgvEfetivo * p.comissao;
   const totalCostoPerm = dinheiroVal + custoTotalConstrucao + pmtPerm * p.mesesPosB;
   const recLiqPerm = vgvEfetivo - permutaVal - comissaoPermuta;
@@ -504,29 +573,34 @@ export function gerarAuditChecks(c: CenarioResult, mercado: AnalyseMercado, p: P
 }
 
 export function calcularProjetoCompleto(p: ProjetoInputs): ProjetoCompleto {
+  const unidadesAtivas = (p.unidades || []).filter(u => u.quantidade > 0 && u.precoVenda > 0);
   const custoTotalConstrucao = p.areaConstruida * p.custoPorM2;
-  const isSC = p.modalidadeFinanciamento === 'so_construcao';
+  const isSC = p.modalidadeFinanciamento === 'so_construcao' || p.modalidadeFinanciamento === 'apoio_producao';
+  const isCarencia = p.modalidadeFinanciamento === 'apoio_producao' || p.modalidadeFinanciamento === 'plano_empresario';
+  const mesesCarencia = isCarencia ? (p.mesesCarencia || 0) : 0;
   const baseFinanciamento = isSC ? custoTotalConstrucao : (p.valorLote + custoTotalConstrucao);
   const valorFinanciado = baseFinanciamento * p.percLTV;
   const taxaMensal = Math.pow(1 + p.taxaAnual, 1 / 12) - 1;
-  const pmt = valorFinanciado * taxaMensal / (1 - Math.pow(1 + taxaMensal, -p.prazoMeses));
+  const prazoEfetivo = Math.max(1, p.prazoMeses - mesesCarencia);
+  const pmt = valorFinanciado > 0 ? valorFinanciado * taxaMensal / (1 - Math.pow(1 + taxaMensal, -prazoEfetivo)) : 0;
 
   const totalPreObraSoftCosts = somaPreObra(p);
   const totalDuranteObraHard = somaDuranteObra(p);
   const bankLandRelease = isSC ? 0 : p.valorLote * p.percLTV;
   const jurosObra = calcularJurosObra(valorFinanciado, taxaMensal, p.mesesObra, bankLandRelease);
 
+  const vgvUnidades = unidadesAtivas.reduce((s, u) => s + u.precoVenda * u.quantidade, 0);
   const vgvPorM2 = p.precoMercado * p.areaConstruida;
-  const vgvEfetivo = Math.max(p.valorVenda, vgvPorM2);
+  const vgvEfetivo = vgvUnidades > 0 ? vgvUnidades : Math.max(p.valorVenda, vgvPorM2);
 
   const carregoPre = (p.condominio + p.iptuAnual / 12) * p.mesesPreObra;
   const carregoDuranteObra = (p.condominio + p.iptuAnual / 12) * p.mesesObra;
   const totalPreObra = totalPreObraSoftCosts + carregoPre;
   const totalDuranteObra = totalDuranteObraHard + carregoDuranteObra + jurosObra;
 
-  const cenA = calcularCenario(p, 'A', p.mesesPosA, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
-  const cenB = calcularCenario(p, 'B', p.mesesPosB, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
-  const cenC = calcularCenario(p, 'C', p.mesesPosC, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo);
+  const cenA = calcularCenario(p, 'A', p.mesesPosA, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo, mesesCarencia);
+  const cenB = calcularCenario(p, 'B', p.mesesPosB, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo, mesesCarencia);
+  const cenC = calcularCenario(p, 'C', p.mesesPosC, custoTotalConstrucao, valorFinanciado, totalPreObraSoftCosts, totalDuranteObraHard, taxaMensal, pmt, jurosObra, vgvEfetivo, mesesCarencia);
 
   const mercado = analisarMercado(p, vgvEfetivo);
   const cronogramaJuros = gerarCronogramaJuros(valorFinanciado, p.taxaAnual, p.mesesObra, bankLandRelease);

@@ -112,6 +112,8 @@ export function criarProjetoPadrao(nome = 'Casa Alpha'): ProjetoInputs {
     vistoriasBanco: 1500,
     habitese: 375.90,
     averbacaoCartorio: 1300,
+    unidades: [],
+    mesesCarencia: 0,
     comparaveis: [
       { descricao: 'Florais do Parque — OLX 1', area: 283, preco: 2950000 },
       { descricao: 'Florais do Parque — OLX 2', area: 233, preco: 2790000 },

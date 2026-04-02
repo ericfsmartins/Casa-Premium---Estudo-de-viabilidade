@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { ArrowLeft, MapPin, FileCheck, Layers, CheckCircle2, XCircle, Building2 } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { ArrowLeft, MapPin, FileCheck, Layers, CheckCircle2, XCircle, Building2, ExternalLink, Loader2 } from 'lucide-react';
 import { TerrenoInfo, Topografia, Zoneamento, SituacaoDocumental, EstrategiaCompra, ProjetoInputs } from '@/lib/types';
 import { fmtBRL, fmtPct } from '@/lib/formatters';
 
@@ -179,11 +179,35 @@ export default function TerrenoPage({ projeto, estrategias, onUpdate, onBack }: 
     onUpdate({ ...t, [key]: val });
   }, [t, onUpdate]);
 
-  const [tab, setTab] = useState<'dados' | 'estrategia'>('dados');
+  const [tab, setTab] = useState<'dados' | 'estrategia' | 'mapa'>('dados');
+  const [mapCoords, setMapCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState('');
+
+  useEffect(() => {
+    if (tab !== 'mapa') return;
+    const query = [t.endereco, t.bairro, t.cidade].filter(Boolean).join(', ');
+    if (!query) { setMapError('Preencha o endereço, bairro e cidade para visualizar o mapa.'); return; }
+    setMapLoading(true);
+    setMapError('');
+    setMapCoords(null);
+    fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
+      .then(r => r.json())
+      .then((data: { lat: string; lon: string }[]) => {
+        if (data.length > 0) {
+          setMapCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+        } else {
+          setMapError('Endereço não encontrado. Verifique os dados de localização.');
+        }
+      })
+      .catch(() => setMapError('Erro ao consultar o serviço de mapas.'))
+      .finally(() => setMapLoading(false));
+  }, [tab, t.endereco, t.bairro, t.cidade]);
 
   const tabs = [
     { id: 'dados', label: '📋 Dados do Terreno' },
     { id: 'estrategia', label: '📊 Estratégia de Compra' },
+    { id: 'mapa', label: '🗺️ Mapa' },
   ] as const;
 
   const roeAlert = estrategias[0]?.roe < 1 ? 'ROE abaixo da meta. Priorize desconto à vista.' : null;
@@ -327,6 +351,53 @@ export default function TerrenoPage({ projeto, estrategias, onUpdate, onBack }: 
               className="input-premium w-full resize-none"
               placeholder="Anotações adicionais sobre o terreno..."
             />
+          </div>
+        </div>
+      )}
+
+      {tab === 'mapa' && (
+        <div className="space-y-4 animate-fade">
+          <div className="section-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-display text-base flex items-center gap-2">
+                <MapPin size={15} className="text-primary" /> Localização do Terreno
+              </h2>
+              {mapCoords && (
+                <a
+                  href={`https://www.openstreetmap.org/?mlat=${mapCoords.lat}&mlon=${mapCoords.lon}#map=17/${mapCoords.lat}/${mapCoords.lon}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-primary hover:opacity-80 transition-opacity"
+                >
+                  <ExternalLink size={12} /> Abrir no OSM
+                </a>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-3">
+              {[t.endereco, t.bairro, t.cidade].filter(Boolean).join(', ') || 'Endereço não preenchido'}
+            </p>
+            {mapLoading && (
+              <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground text-sm">
+                <Loader2 size={18} className="animate-spin" /> Localizando endereço…
+              </div>
+            )}
+            {mapError && !mapLoading && (
+              <div className="flex items-center justify-center h-40 text-warning/80 text-sm text-center px-4">
+                {mapError}
+              </div>
+            )}
+            {mapCoords && !mapLoading && (
+              <iframe
+                title="Mapa do Terreno"
+                className="w-full rounded-xl border border-border/40"
+                height={420}
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapCoords.lon - 0.008},${mapCoords.lat - 0.005},${mapCoords.lon + 0.008},${mapCoords.lat + 0.005}&layer=mapnik&marker=${mapCoords.lat},${mapCoords.lon}`}
+              />
+            )}
+          </div>
+          <div className="section-card p-4">
+            <p className="text-xs text-muted-foreground">
+              <strong className="text-foreground">Fonte:</strong> OpenStreetMap via Nominatim. Geocodificação baseada nos campos Endereço, Bairro e Cidade do módulo Terreno.
+            </p>
           </div>
         </div>
       )}

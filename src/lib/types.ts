@@ -4,7 +4,15 @@ export interface Comparavel {
   preco: number;
 }
 
-export type ModalidadeFinanciamento = 'terreno_construcao' | 'so_construcao';
+export interface TipoUnidade {
+  id: string;
+  descricao: string;
+  area: number;
+  precoVenda: number;
+  quantidade: number;
+}
+
+export type ModalidadeFinanciamento = 'terreno_construcao' | 'so_construcao' | 'apoio_producao' | 'plano_empresario';
 
 export interface ProjetoInputs {
   id: string;
@@ -45,6 +53,8 @@ export interface ProjetoInputs {
   habitese: number;
   averbacaoCartorio: number;
   comparaveis: Comparavel[];
+  unidades?: TipoUnidade[];
+  mesesCarencia?: number;
   // Módulos opcionais
   terreno?: TerrenoInfo;
   riscos?: RiscoItem[];
@@ -206,6 +216,13 @@ export interface CenarioResult {
   fluxoDetalhado: FluxoCaixaMes[];
 }
 
+export interface ScoreFator {
+  label: string;
+  descricao: string;
+  pontos: number;
+  maxPontos: number;
+}
+
 export interface AnalyseMercado {
   mediaComps: number;
   medianaComps: number;
@@ -217,6 +234,7 @@ export interface AnalyseMercado {
   scoreLiquidez: number; // 0–100
   alertaLiquidez: string;
   diasGiroEstimado: number;
+  scoreFactors: ScoreFator[];
 }
 
 export interface AuditCheck {

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ChevronDown, Plus, Trash2, RotateCcw, Save } from 'lucide-react';
-import { ProjetoInputs, Comparavel, ModalidadeFinanciamento } from '@/lib/types';
+import { ProjetoInputs, Comparavel, TipoUnidade, ModalidadeFinanciamento } from '@/lib/types';
+import { v4Fallback } from '@/lib/utils-id';
 import { toast } from 'sonner';
 
 interface InputsPageProps {
@@ -105,6 +106,23 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
     onUpdate({ ...projeto, comparaveis: projeto.comparaveis.filter((_, i) => i !== idx) });
   };
 
+  const updateUnidade = useCallback((id: string, field: keyof TipoUnidade, val: string | number) => {
+    const unidades = (projeto.unidades || []).map(u => u.id === id ? { ...u, [field]: val } : u);
+    onUpdate({ ...projeto, unidades });
+  }, [projeto, onUpdate]);
+
+  const addUnidade = () => {
+    const unidades = projeto.unidades || [];
+    if (unidades.length >= 8) return;
+    onUpdate({ ...projeto, unidades: [...unidades, { id: v4Fallback(), descricao: `Tipo ${String.fromCharCode(65 + unidades.length)}`, area: 0, precoVenda: 0, quantidade: 1 }] });
+  };
+
+  const removeUnidade = (id: string) => {
+    onUpdate({ ...projeto, unidades: (projeto.unidades || []).filter(u => u.id !== id) });
+  };
+
+  const isCarencia = projeto.modalidadeFinanciamento === 'apoio_producao' || projeto.modalidadeFinanciamento === 'plano_empresario';
+
   const grid = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4";
 
   return (
@@ -142,35 +160,33 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
         <div className="space-y-4">
           <div>
             <label className="text-xs text-muted-foreground font-medium mb-2 block">Modalidade de financiamento</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  set('modalidadeFinanciamento', 'terreno_construcao');
-                  if (projeto.percLTV > 0.80) set('percLTV', 0.80);
-                }}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  projeto.modalidadeFinanciamento === 'terreno_construcao'
-                    ? 'bg-primary text-primary-foreground shadow-md'
-                    : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
-                }`}
-              >
-                Terreno + Construção
-              </button>
-              <button
-                onClick={() => set('modalidadeFinanciamento', 'so_construcao')}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  projeto.modalidadeFinanciamento === 'so_construcao'
-                    ? 'bg-primary text-primary-foreground shadow-md'
-                    : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
-                }`}
-              >
-                Só Construção
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { value: 'terreno_construcao' as ModalidadeFinanciamento, label: 'Terreno + Construção', desc: 'Banco financia até 80% do (terreno + construção).' },
+                { value: 'so_construcao' as ModalidadeFinanciamento, label: 'Só Construção', desc: 'Banco financia até 100% da construção. Terreno 100% equity.' },
+                { value: 'apoio_producao' as ModalidadeFinanciamento, label: 'Apoio à Produção', desc: 'Só construção + período de carência antes do PMT.' },
+                { value: 'plano_empresario' as ModalidadeFinanciamento, label: 'Plano Empresário', desc: 'Terreno + construção + período de carência antes do PMT.' },
+              ] as const).map(m => (
+                <button key={m.value}
+                  onClick={() => {
+                    set('modalidadeFinanciamento', m.value);
+                    if ((m.value === 'terreno_construcao' || m.value === 'plano_empresario') && projeto.percLTV > 0.80) set('percLTV', 0.80);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    projeto.modalidadeFinanciamento === m.value
+                      ? 'bg-primary text-primary-foreground shadow-md'
+                      : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
             <p className="text-[10px] text-muted-foreground/70 mt-1.5">
-              {projeto.modalidadeFinanciamento === 'terreno_construcao'
-                ? 'Banco financia até 80% do (terreno + construção). Liberação do terreno no mês 0 e construção em tranches.'
-                : 'Banco financia até 100% da construção. O terreno sai 100% do seu caixa (equity).'}
+              {projeto.modalidadeFinanciamento === 'terreno_construcao' && 'Banco financia até 80% do (terreno + construção). Liberação do terreno no mês 0 e construção em tranches.'}
+              {projeto.modalidadeFinanciamento === 'so_construcao' && 'Banco financia até 100% da construção. O terreno sai 100% do seu caixa (equity).'}
+              {projeto.modalidadeFinanciamento === 'apoio_producao' && 'Financiamento apenas da construção com carência: só juros até o término da obra, depois PMT.'}
+              {projeto.modalidadeFinanciamento === 'plano_empresario' && 'Financiamento de terreno + construção com carência: só juros no início, PMT começa após a carência.'}
             </p>
           </div>
           <div className={grid}>
@@ -179,10 +195,13 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
               value={projeto.percLTV}
               onChange={v => set('percLTV', v as number)}
               type="slider"
-              max={projeto.modalidadeFinanciamento === 'so_construcao' ? 1.0 : 0.80}
+              max={projeto.modalidadeFinanciamento === 'so_construcao' || projeto.modalidadeFinanciamento === 'apoio_producao' ? 1.0 : 0.80}
             />
             <Field label="Taxa de juros anual" value={projeto.taxaAnual} onChange={v => set('taxaAnual', v as number)} type="percent" suffix="%" />
-            <Field label="Prazo (meses)" value={projeto.prazoMeses} onChange={v => set('prazoMeses', v as number)} />
+            <Field label="Prazo total (meses)" value={projeto.prazoMeses} onChange={v => set('prazoMeses', v as number)} />
+            {isCarencia && (
+              <Field label="Carência (meses)" value={projeto.mesesCarencia ?? 0} onChange={v => set('mesesCarencia', v as number)} />
+            )}
           </div>
         </div>
       </Section>
@@ -237,7 +256,48 @@ export default function InputsPage({ projeto, onUpdate, onReset }: InputsPagePro
         </div>
       </Section>
 
-      <Section title="8 — Comparáveis de Mercado" defaultOpen={false}>
+      <Section title="8 — VGV por Tipo de Unidade" defaultOpen={false}>
+        <p className="text-[10px] text-muted-foreground/70 mb-3">
+          Quando preenchido, substitui o "Valor de venda estimado" e o "Preço médio mercado × área" para cálculo do VGV total.
+        </p>
+        <div className="space-y-3 mt-1">
+          <div className="hidden sm:grid grid-cols-[1fr_90px_120px_70px_90px_40px] gap-2 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider px-1">
+            <span>Tipo</span><span>Área (m²)</span><span>Preço (R$)</span><span>Qtd</span><span>VGV</span><span></span>
+          </div>
+          {(projeto.unidades || []).map(u => {
+            const vgvU = u.precoVenda * u.quantidade;
+            return (
+              <div key={u.id} className="grid grid-cols-1 sm:grid-cols-[1fr_90px_120px_70px_90px_40px] gap-2 items-center">
+                <input className="input-premium" value={u.descricao} onChange={e => updateUnidade(u.id, 'descricao', e.target.value)} placeholder="Ex: Casa Tipo A" />
+                <input className="input-premium" type="number" value={u.area} onChange={e => updateUnidade(u.id, 'area', parseFloat(e.target.value) || 0)} />
+                <input className="input-premium" type="number" value={u.precoVenda} onChange={e => updateUnidade(u.id, 'precoVenda', parseFloat(e.target.value) || 0)} />
+                <input className="input-premium" type="number" min={1} value={u.quantidade} onChange={e => updateUnidade(u.id, 'quantidade', parseInt(e.target.value) || 1)} />
+                <span className="text-xs font-mono text-primary px-1">
+                  {vgvU > 0 ? `R$ ${(vgvU / 1000).toFixed(0)}k` : '—'}
+                </span>
+                <button onClick={() => removeUnidade(u.id)} className="text-muted-foreground hover:text-destructive transition-colors active:scale-90 p-1">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            );
+          })}
+          {(projeto.unidades || []).length < 8 && (
+            <button onClick={addUnidade} className="flex items-center gap-1.5 text-xs text-primary font-medium hover:opacity-80 transition-opacity active:scale-95 mt-2">
+              <Plus size={14} /> Adicionar tipo de unidade
+            </button>
+          )}
+          {(projeto.unidades || []).length > 0 && (
+            <div className="mt-2 pt-2 border-t border-border/30 text-xs font-mono text-muted-foreground flex justify-between">
+              <span>VGV Total (unidades)</span>
+              <span className="text-primary font-semibold">
+                R$ {((projeto.unidades || []).reduce((s, u) => s + u.precoVenda * u.quantidade, 0) / 1000).toFixed(0)}k
+              </span>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section title="9 — Comparáveis de Mercado" defaultOpen={false}>
         <div className="space-y-3 mt-1">
           <div className="hidden sm:grid grid-cols-[1fr_100px_140px_100px_40px] gap-2 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider px-1">
             <span>Descrição</span><span>Área (m²)</span><span>Preço (R$)</span><span>R$/m²</span><span></span>
